@@ -41,6 +41,39 @@ __BEGIN_DECLS
  * Note: The kernel zero's the padded region because glibc might read them
  * in the hope that the kernel has stretched to using larger sizes.
  */
+#ifdef __mips__
+struct stat {
+    unsigned long	st_dev;
+    unsigned long       __pad0[3];
+
+    unsigned long long  st_ino;
+
+    unsigned int        st_mode;
+    unsigned int        st_nlink;
+
+    unsigned long       st_uid;
+    unsigned long       st_gid;
+
+    unsigned long	st_rdev;
+    unsigned long       __pad1[3];
+
+    long long           st_size;
+
+    unsigned long       st_atime;
+    unsigned long       st_atime_nsec;
+
+    unsigned long       st_mtime;
+    unsigned long       st_mtime_nsec;
+
+    unsigned long       st_ctime;
+    unsigned long       st_ctime_nsec;
+
+    unsigned long	st_blksize;
+    unsigned long	__pad2;
+
+    unsigned long long  st_blocks;
+};
+#else
 struct stat {
     unsigned long long  st_dev;
     unsigned char       __pad0[4];
@@ -70,6 +103,7 @@ struct stat {
 
     unsigned long long  st_ino;
 };
+#endif
 
 extern int    chmod(const char *, mode_t);
 extern int    fchmod(int, mode_t);

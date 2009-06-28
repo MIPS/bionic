@@ -170,7 +170,23 @@ else
 
     libm_common_includes = $(LOCAL_PATH)/i386 $(LOCAL_PATH)/i387
   else
-    $(error "Unknown architecture")
+    ifeq ($(TARGET_ARCH),mips)
+      libm_common_src_files += \
+	mips/fenv.c \
+	src/e_ldexpf.c \
+	src/s_scalbln.c \
+	src/s_scalbn.c \
+	src/s_scalbnf.c
+
+      libm_common_src_files += \
+	src/s_sincos.c \
+	src/s_sincosf.c
+
+      libm_common_includes = $(LOCAL_PATH)/mips
+
+    else
+      $(error "Unknown architecture")
+    endif
   endif
 endif
 

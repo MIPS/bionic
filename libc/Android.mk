@@ -172,7 +172,6 @@ libc_common_src_files := \
 	string/memccpy.c \
 	string/memchr.c \
 	string/memmem.c \
-	string/memmove.c.arm \
 	string/memrchr.c \
 	string/memswap.c \
 	string/strcasecmp.c \
@@ -256,7 +255,6 @@ libc_common_src_files := \
 	netbsd/resolv/res_mkquery.c \
 	netbsd/resolv/res_query.c \
 	netbsd/resolv/res_send.c \
-	netbsd/resolv/res_state.c.arm \
 	netbsd/resolv/res_cache.c \
 	netbsd/net/nsdispatch.c \
 	netbsd/net/getaddrinfo.c \
@@ -273,6 +271,7 @@ libc_common_src_files := \
 	netbsd/nameser/ns_samedomain.c
 
 ifeq ($(TARGET_ARCH),arm)
+
 libc_common_src_files += \
 	bionic/eabi.c \
 	arch-arm/bionic/__get_pc.S \
@@ -292,6 +291,8 @@ libc_common_src_files += \
 	arch-arm/bionic/sigsetjmp.S \
 	arch-arm/bionic/strlen.c.arm \
 	arch-arm/bionic/syscall.S \
+	netbsd/resolv/res_state.c.arm \
+	string/memmove.c.arm \
 	unistd/socketcalls.c
 
 # These files need to be arm so that gdbserver
@@ -301,7 +302,8 @@ libc_common_src_files += \
 	bionic/pthread.c.arm \
 	bionic/pthread-timers.c.arm \
 	bionic/ptrace.c.arm
-else # !arm
+
+endif # arm
 
 ifeq ($(TARGET_ARCH),x86)
 libc_common_src_files += \
@@ -319,12 +321,46 @@ libc_common_src_files += \
 	arch-x86/string/memcmp.S \
 	arch-x86/string/memcpy.S \
 	arch-x86/string/strlen.S \
+	netbsd/resolv/res_state.c \
+	string/memmove.c \
 	bionic/pthread.c \
 	bionic/pthread-timers.c \
 	bionic/ptrace.c
+
 endif # x86
 
-endif # !arm
+ifeq ($(TARGET_ARCH),mips)
+libc_common_src_files += \
+	arch-mips/bionic/__get_sp.S \
+	arch-mips/bionic/__get_tls.c \
+	arch-mips/bionic/__set_tls.c \
+	arch-mips/bionic/_exit_with_stack_teardown.S \
+	arch-mips/bionic/_setjmp.S \
+	arch-mips/bionic/atomics_mips.S \
+	arch-mips/bionic/bzero.S \
+	arch-mips/bionic/cacheflush.c \
+	arch-mips/bionic/clone.S \
+	arch-mips/bionic/clonecall.S \
+	arch-mips/bionic/ffs.S \
+	arch-mips/bionic/memcmp16.S \
+	arch-mips/bionic/pipe.S \
+	arch-mips/bionic/setjmp.S \
+	arch-mips/bionic/sigsetjmp.S \
+	arch-mips/bionic/syscall.S \
+	arch-mips/bionic/vfork.S \
+	netbsd/resolv/res_state.c \
+	string/memmove.c \
+	string/memcpy.c \
+	string/memcmp.c \
+	string/memset.c \
+	string/strlen.c
+
+libc_common_src_files += \
+	bionic/pthread.c \
+	bionic/pthread-timers.c \
+	bionic/ptrace.c
+
+endif # mips
 
 libc_common_cflags := \
 		-DWITH_ERRLIST			\
@@ -346,6 +382,10 @@ ifeq ($(TARGET_ARCH),arm)
   libc_common_cflags += -fstrict-aliasing
 endif
 
+ifeq ($(TARGET_ARCH),mips)
+libc_common_cflags +=
+endif
+
 libc_common_c_includes := \
 		$(LOCAL_PATH)/stdlib  \
 		$(LOCAL_PATH)/string  \
@@ -361,11 +401,15 @@ LOCAL_CFLAGS := $(libc_common_cflags) -DUSE_DL_PREFIX
 LOCAL_C_INCLUDES := $(libc_common_c_includes)
 
 ifneq ($(TARGET_SIMULATOR),true)
-  ifeq ($(TARGET_ARCH),arm)
-    crtend_target_cflags := -mthumb-interwork
-  else
-    ifeq ($(TARGET_ARCH),x86)
-      crtend_target_cflags := -m32
+  ifeq ($(TARGET_ARCH),mips)
+    crtend_target_cflags := -march=$(TARGET_ARCH_VERSION)
+  else	
+    ifeq ($(TARGET_ARCH),arm)
+      crtend_target_cflags := -mthumb-interwork
+    else
+      ifeq ($(TARGET_ARCH),x86)
+        crtend_target_cflags := -m32
+      endif
     endif
   endif
 # We rename crtend.o to crtend_android.o to avoid a
@@ -426,28 +470,39 @@ LOCAL_SRC_FILES := \
 	bionic/libc_init_static.c
 
 ifeq ($(WITH_MALLOC_CHECK_LIBC_A),true)
+ifeq ($(TARGET_ARCH),arm)
   LOCAL_SRC_FILES += bionic/malloc_leak.c.arm
+else
+  LOCAL_SRC_FILES += bionic/malloc_leak.c
+endif
 endif
 
 ifeq ($(TARGET_ARCH),arm)
 LOCAL_SRC_FILES += \
 	arch-arm/bionic/exidx_static.c
-
-else # TARGET_ARCH != arm
+endif
 
 ifeq ($(TARGET_ARCH),x86)
 LOCAL_SRC_FILES += \
 	arch-x86/bionic/dl_iterate_phdr_static.c
 endif
 
+ifeq ($(TARGET_ARCH),mips)
+LOCAL_SRC_FILES += \
+	arch-mips/bionic/dl_iterate_phdr_static.c
 endif
 
+
 ifneq ($(TARGET_SIMULATOR),true)
-  ifeq ($(TARGET_ARCH),arm)
-    crtbegin_static_target_cflags := -mthumb-interwork
+  ifeq ($(TARGET_ARCH),mips)
+    crtbegin_static_target_cflags := -march=$(TARGET_ARCH_VERSION)
   else
-    ifeq ($(TARGET_ARCH),x86)
-      crtbegin_static_target_cflags := -m32
+    ifeq ($(TARGET_ARCH),arm)
+      crtbegin_static_target_cflags := -mthumb-interwork
+    else
+      ifeq ($(TARGET_ARCH),x86)
+        crtbegin_static_target_cflags := -m32
+      endif
     endif
   endif
 GEN := $(TARGET_OUT_STATIC_LIBRARIES)/crtbegin_static.o
@@ -485,12 +540,15 @@ LOCAL_C_INCLUDES := $(libc_common_c_includes)
 
 LOCAL_SRC_FILES := \
 	bionic/dlmalloc.c \
-	bionic/malloc_leak.c.arm \
 	bionic/libc_init_dynamic.c
 
 ifeq ($(TARGET_ARCH),arm)
 LOCAL_SRC_FILES += \
+	bionic/malloc_leak.c.arm \
 	arch-arm/bionic/exidx_dynamic.c
+else
+LOCAL_SRC_FILES += \
+	bionic/malloc_leak.c
 endif
 
 LOCAL_MODULE:= libc
@@ -508,11 +566,15 @@ LOCAL_WHOLE_STATIC_LIBRARIES := libc_common
 LOCAL_SYSTEM_SHARED_LIBRARIES :=
 
 ifneq ($(TARGET_SIMULATOR),true)
-  ifeq ($(TARGET_ARCH),arm)
-    crtbegin_dynamic_target_cflags := -mthumb-interwork
+  ifeq ($(TARGET_ARCH),mips)
+    crtbegin_dynamic_target_cflags := -fpic -march=$(TARGET_ARCH_VERSION)
   else
-    ifeq ($(TARGET_ARCH),x86)
-      crtbegin_dynamic_target_cflags := -m32
+    ifeq ($(TARGET_ARCH),arm)
+      crtbegin_dynamic_target_cflags := -mthumb-interwork
+    else
+      ifeq ($(TARGET_ARCH),x86)
+        crtbegin_dynamic_target_cflags := -m32
+      endif
     endif
   endif
 GEN := $(TARGET_OUT_STATIC_LIBRARIES)/crtbegin_dynamic.o
@@ -538,12 +600,15 @@ LOCAL_C_INCLUDES := $(libc_common_c_includes)
 
 LOCAL_SRC_FILES := \
 	bionic/dlmalloc.c \
-	bionic/malloc_leak.c.arm \
 	bionic/libc_init_dynamic.c
 
 ifeq ($(TARGET_ARCH),arm)
 LOCAL_SRC_FILES += \
+	bionic/malloc_leak.c.arm \
 	arch-arm/bionic/exidx_dynamic.c
+else
+LOCAL_SRC_FILES += \
+	bionic/malloc_leak.c
 endif
 
 LOCAL_MODULE:= libc_debug

@@ -100,8 +100,43 @@ struct _link_stats linker_stats;
 unsigned bitmask[4096];
 #endif
 
+#ifdef ANDROID_ARM_LINKER
 #ifndef PT_ARM_EXIDX
 #define PT_ARM_EXIDX    0x70000001      /* .ARM.exidx segment */
+#endif
+#endif
+
+#ifdef ANDROID_MIPS_LINKER
+#ifndef DT_MIPS_RLD_VERSION
+#define DT_MIPS_RLD_VERSION	0x70000001
+#endif
+#ifndef DT_MIPS_FLAGS
+#define DT_MIPS_FLAGS		0x70000005
+#endif
+#ifndef DT_MIPS_BASE_ADDRESS
+#define DT_MIPS_BASE_ADDRESS	0x70000006
+#endif
+#ifndef DT_MIPS_LOCAL_GOTNO
+#define DT_MIPS_LOCAL_GOTNO	0x7000000a
+#endif
+#ifndef DT_MIPS_SYMTABNO
+#define DT_MIPS_SYMTABNO	0x70000011
+#endif
+#ifndef DT_MIPS_UNREFEXTNO
+#define DT_MIPS_UNREFEXTNO	0x70000012
+#endif
+#ifndef DT_MIPS_GOTSYM
+#define DT_MIPS_GOTSYM		0x70000013
+#endif
+#ifndef DT_MIPS_RLD_MAP
+#define DT_MIPS_RLD_MAP		0x70000016
+#endif
+#ifndef DT_MIPS_PLTGOT
+#define DT_MIPS_PLTGOT		0x70000032
+#endif
+#ifndef DT_MIPS_RWPLT
+#define DT_MIPS_RWPLT		0x70000034
+#endif
 #endif
 
 /*
@@ -319,6 +354,28 @@ _Unwind_Ptr dl_unwind_find_exidx(_Unwind_Ptr pc, int *pcount)
     return NULL;
 }
 #elif defined(ANDROID_X86_LINKER)
+/* Here, we only have to provide a callback to iterate across all the
+ * loaded libraries. gcc_eh does the rest. */
+int
+dl_iterate_phdr(int (*cb)(struct dl_phdr_info *info, size_t size, void *data),
+                void *data)
+{
+    soinfo *si;
+    struct dl_phdr_info dl_info;
+    int rv = 0;
+
+    for (si = solist; si != NULL; si = si->next) {
+        dl_info.dlpi_addr = si->linkmap.l_addr;
+        dl_info.dlpi_name = si->linkmap.l_name;
+        dl_info.dlpi_phdr = si->phdr;
+        dl_info.dlpi_phnum = si->phnum;
+        rv = cb(&dl_info, sizeof (struct dl_phdr_info), data);
+        if (rv != 0)
+            break;
+    }
+    return rv;
+}
+#elif defined(ANDROID_MIPS_LINKER)
 /* Here, we only have to provide a callback to iterate across all the
  * loaded libraries. gcc_eh does the rest. */
 int
@@ -931,6 +988,59 @@ get_wr_offset(int fd, const char *name, Elf32_Ehdr *ehdr)
 }
 #endif
 
+void
+get_ctors_dtors(int fd, soinfo *si, Elf32_Ehdr *ehdr)
+{
+    Elf32_Shdr *shdr, *strhdr;
+    const char *shstrtab;
+    void *shdr_pages, *shstrtab_pages;
+    int shdr_offs, shdr_sz;
+    int shstrtab_offs, shstrtab_sz;
+    int cnt;
+
+#define PAGE_UP(x) (((x)+PAGE_MASK) & ~PAGE_MASK)
+#define PAGE_DOWN(x) ((x) & ~PAGE_MASK)
+#define PAGE_OFF(x) ((x) & PAGE_MASK)
+    shdr_offs = PAGE_DOWN(ehdr->e_shoff);
+    shdr_sz = PAGE_UP(ehdr->e_shoff + ehdr->e_shnum*sizeof(Elf32_Shdr)) - shdr_offs;
+    shdr_pages = mmap(0, shdr_sz, PROT_READ, MAP_PRIVATE, fd, shdr_offs);
+    if (shdr_pages == MAP_FAILED) {
+        WARN("%5d - Could not read section header info from '%s'. Will not "
+             "be able to run constructors/destructors.\n", pid, name);
+        return;
+    }
+    shdr = shdr_pages + PAGE_OFF(ehdr->e_shoff);
+
+    strhdr = &shdr[ehdr->e_shstrndx];
+    shstrtab_offs = PAGE_DOWN(strhdr->sh_offset);
+    shstrtab_sz = PAGE_UP(strhdr->sh_offset + strhdr->sh_size) - shstrtab_offs;
+    shstrtab_pages = mmap(0, shstrtab_sz, PROT_READ, MAP_PRIVATE, fd, shstrtab_offs);
+    if (shstrtab_pages == MAP_FAILED) {
+        WARN("%5d - Could not read section header info from '%s'. Will not "
+             "be able to run constructors/destructors.\n", pid, name);
+	
+	munmap(shdr_pages, shdr_sz);
+        return;
+    }
+    shstrtab = shstrtab_pages + PAGE_OFF(strhdr->sh_offset);
+
+    for(cnt = 0; cnt < ehdr->e_shnum; ++cnt, ++shdr) {
+	const char *name = shstrtab + shdr->sh_name;
+	if (strcmp(name, ".ctors") == 0) {
+	    si->ctors = (unsigned *)(si->base + shdr->sh_offset);
+	    si->ctors_count = shdr->sh_size/sizeof(Elf32_Word);
+	}
+	if (strcmp(name, ".dtors") == 0) {
+	    si->dtors = (unsigned *)(si->base + shdr->sh_offset);
+	    si->dtors_count = shdr->sh_size/sizeof(Elf32_Word);
+	}
+    }
+
+    munmap(shdr_pages, shdr_sz);
+    munmap(shstrtab_pages, shstrtab_sz);
+}
+
+
 static soinfo *
 load_library(const char *name)
 {
@@ -1001,6 +1111,9 @@ load_library(const char *name)
     si->phdr = (Elf32_Phdr *)((unsigned char *)si->base + hdr->e_phoff);
     si->phnum = hdr->e_phnum;
     /**/
+
+    /* Look for constructor/destructor sections while we still can */
+    get_ctors_dtors(fd, si, hdr);
 
     close(fd);
     return si;
@@ -1112,7 +1225,7 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
     Elf32_Rel *start = rel;
     unsigned idx;
 
-    for (idx = 0; idx < count; ++idx) {
+    for (idx = 0; idx < count; ++idx, ++rel) {
         unsigned type = ELF32_R_TYPE(rel->r_info);
         unsigned sym = ELF32_R_SYM(rel->r_info);
         unsigned reloc = (unsigned)(rel->r_offset + si->base);
@@ -1121,6 +1234,11 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
 
         DEBUG("%5d Processing '%s' relocation at index %d\n", pid,
               si->name, idx);
+
+	/* Ignore R_XXX_NONE relocations */
+	if (type == 0)
+	    continue;
+
         if(sym != 0) {
             s = _do_lookup(si, strtab + symtab[sym].st_name, &base);
             if(s == 0) {
@@ -1189,6 +1307,25 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
                        reloc, sym_addr, sym_name);
             *((unsigned*)reloc) = sym_addr;
             break;
+#elif defined(ANDROID_MIPS_LINKER)
+	case R_MIPS_JUMP_SLOT:
+            COUNT_RELOC(RELOC_ABSOLUTE);
+            MARK(rel->r_offset);
+            TRACE_TYPE(RELO, "%5d RELO JMP_SLOT %08x <- %08x %s\n", pid,
+                       reloc, sym_addr, sym_name);
+            *((unsigned*)reloc) = sym_addr;
+            break;
+	case R_MIPS_REL32:
+            COUNT_RELOC(RELOC_ABSOLUTE);
+            MARK(rel->r_offset);
+            TRACE_TYPE(RELO, "%5d RELO REL32 %08x <- %08x %s\n", pid,
+                       reloc, sym_addr, sym_name);
+            if (s)
+		*((unsigned*)reloc) = sym_addr;
+	    else
+		
+		*((unsigned*)reloc) += si->base;
+            break;
 #endif /* ANDROID_*_LINKER */
 
 #if defined(ANDROID_ARM_LINKER)
@@ -1244,10 +1381,104 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
                   pid, type, rel, (int) (rel - start));
             return -1;
         }
-        rel++;
     }
     return 0;
 }
+
+#ifdef ANDROID_MIPS_LINKER
+int mips_relocate_got(struct soinfo *si)
+{
+    unsigned *got;
+    unsigned local_gotno, gotsym, symtabno;
+    Elf32_Sym *symtab, *sym;
+    unsigned g;
+
+#if 0
+    if ((si->flags & (FLAG_PRELINKED|FLAG_EXE)) == 0) {
+	ERROR("%5d In '%s' not expecting non-prelinked shared library\n",
+	      pid, si->name);
+	return -1;
+    }
+#endif
+
+    got = si->plt_got;
+    local_gotno = si->mips_local_gotno;
+    gotsym = si->mips_gotsym;
+    symtabno = si->mips_symtabno;
+    symtab = si->symtab;
+
+    /*
+     * got[0] is address of lazy resolver function
+     * got[1] may be used for a GNU extension
+     * set it to a recognisable address in case someone calls it
+     * (should be _rtld_bind_start)
+     * FIXME: maybe this should be in a separate routine
+     */
+    
+    g = 0;
+    got[g++] = 0xdeadbeef;
+    if (got[g] & 0x80000000)
+	got[g++] = 0xdeadfeed;
+
+    /*
+     * If this is not prelinked or execuatble
+     * then the local GOT entries need to be relocated
+     */
+    if ((si->flags & (FLAG_PRELINKED|FLAG_EXE)) == 0) {
+	for (; g < local_gotno; g++) 
+	    *got++ += si->base;
+    }
+
+    /* Now for the global GOT entries */
+    sym = symtab + gotsym;
+    got = si->plt_got + local_gotno;
+    for (g = gotsym; g < symtabno; g++, sym++, got++) {
+        const char *sym_name;
+	unsigned base;
+	Elf32_Sym *s;
+
+	if (sym->st_shndx != SHN_UNDEF &&
+	    (si->flags & FLAG_PRELINKED)) {
+#ifdef LINKER_DEBUG
+	    /*
+	     * This GOT entry should already contain the correct value
+	     * let's take a look
+	     */
+	    sym_name = si->strtab + sym->st_name;
+	    s = _do_lookup (si, sym_name, &base);
+	    if (s == NULL) {
+		ERROR("%5d In '%s', can't locate symbol %s\n",
+		      pid, si->name, sym_name);
+		return -1;
+	    }
+	    if (*got != base + s->st_value) {
+		ERROR("%5d In '%s', unexpected GOT value for resolved reference"
+		      " have 0x%08x, got 0x%08x\n",
+		      pid, si->name, *got, base + s->st_value);
+		return -1;
+	    }
+#endif
+	    continue;
+	}
+	    
+	/* This is an undefined reference... try to locate it */
+	sym_name = si->strtab + sym->st_name;
+	s = _do_lookup (si, sym_name, &base);
+	if (s == NULL) {
+	    ERROR("%5d In '%s', can't locate symbol %s\n",
+		  pid, si->name, sym_name);
+	    return -1;
+	}
+
+	/* FIXME: is this sufficient?
+	 * For reference see NetBSD link loader
+	 * http://cvsweb.netbsd.org/bsdweb.cgi/src/libexec/ld.elf_so/arch/mips/mips_reloc.c?rev=1.53&content-type=text/x-cvsweb-markup
+	 */
+	*got = base + s->st_value;
+    }
+    return 0;
+}
+#endif
 
 static void call_array(unsigned *ctor, int count)
 {
@@ -1302,6 +1533,14 @@ static void call_constructors(soinfo *si)
         call_array(si->init_array, si->init_array_count);
         TRACE("[ %5d Done calling init_array for '%s' ]\n", pid, si->name);
     }
+
+    if (((si->flags & FLAG_EXE) == 0) && si->ctors) {
+	TRACE("[ %5d Calling ctors @ 0x%08x [%d] for '%s' ]\n",
+              pid, (unsigned)si->ctors, si->ctors_count,
+              si->name);
+        call_array(si->ctors, si->ctors_count);
+        TRACE("[ %5d Done calling ctors for '%s' ]\n", pid, si->name);
+    }
 }
 
 static void call_destructors(soinfo *si)
@@ -1323,6 +1562,14 @@ static void call_destructors(soinfo *si)
               (unsigned)si->fini_func, si->name);
         si->fini_func();
         TRACE("[ %5d Done calling fini_func for '%s' ]\n", pid, si->name);
+    }
+
+    if (((si->flags & FLAG_EXE) == 0) && si->dtors) {
+	TRACE("[ %5d Calling dtors @ 0x%08x [%d] for '%s' ]\n",
+              pid, (unsigned)si->dtors, si->dtors_count,
+              si->name);
+	call_array(si->dtors, si->dtors_count);
+        TRACE("[ %5d Done calling dtors for '%s' ]\n", pid, si->name);
     }
 }
 
@@ -1563,6 +1810,50 @@ static int link_image(soinfo *si, unsigned wr_offset)
             DEBUG("%5d Text segment should be writable during relocation.\n",
                   pid);
             break;
+#if defined(ANDROID_MIPS_LINKER)
+	case DT_NEEDED:
+	case DT_STRSZ:
+	case DT_SYMENT:
+	case DT_RELENT:
+	     break;
+	case DT_MIPS_RLD_MAP:
+	    /* Set the DT_MIPS_RLD_MAP entry to the addres of _r_debug for GDB */
+	    {
+	      struct r_debug **dp = (struct r_debug **)*d;
+	      *dp = &_r_debug;
+	    }
+            break;
+	case DT_MIPS_RLD_VERSION:
+	case DT_MIPS_FLAGS:
+	case DT_MIPS_BASE_ADDRESS:
+	case DT_MIPS_UNREFEXTNO:
+	case DT_MIPS_RWPLT:
+	    break;
+
+	case DT_MIPS_PLTGOT:
+#if 0
+	    /* not yet... */
+	    si->mips_pltgot = (unsigned *)(si->base + *d);
+#endif
+	    break;
+
+	case DT_MIPS_SYMTABNO:
+	    si->mips_symtabno = *d;
+	    break;
+
+	case DT_MIPS_LOCAL_GOTNO:
+	    si->mips_local_gotno = *d;
+	    break;
+
+	case DT_MIPS_GOTSYM:
+	    si->mips_gotsym = *d;
+	    break;
+
+	default:
+	    DEBUG("%5d Unused DT entry: type 0x%08x arg 0x%08x\n",
+		  pid, d[-1], d[0]);
+	    break;
+#endif
         }
     }
 
@@ -1596,6 +1887,11 @@ static int link_image(soinfo *si, unsigned wr_offset)
         if(reloc_library(si, si->rel, si->rel_count))
             goto fail;
     }
+
+#ifdef ANDROID_MIPS_LINKER
+    if(mips_relocate_got(si))
+        goto fail;
+#endif
 
     si->flags |= FLAG_LINKED;
     DEBUG("[ %5d finished linking %s ]\n", pid, si->name);
