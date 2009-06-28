@@ -1761,8 +1761,10 @@ static int link_image(soinfo *si, unsigned wr_offset)
             si->plt_got = (unsigned *)(si->base + *d);
             break;
         case DT_DEBUG:
+#if !defined(ANDROID_MIPS_LINKER)
             // Set the DT_DEBUG entry to the addres of _r_debug for GDB
             *d = (int) &_r_debug;
+#endif
             break;
         case DT_RELA:
             ERROR("%5d DT_RELA not supported\n", pid);
