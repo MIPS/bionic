@@ -28,6 +28,7 @@
 #include <sys/cdefs.h>
 #include <sys/types.h>
 #include <netdb.h>
+#include <arpa/inet.h>
 #include "servent.h"
 #include "services.h"
 
@@ -92,8 +93,14 @@ getservent_r( res_static  rs )
     memcpy( rs->servent.s_name, p+1, namelen );
     rs->servent.s_name[namelen] = 0;
     p += 1 + namelen;
-    rs->servent.s_port = ((((unsigned char*)p)[0] << 8) |
-                           ((unsigned char*)p)[1]);
+    {
+	int port;
+	/* source data is in bigendian byte order */
+	port = ((((unsigned char *)p)[0]) << 8) |
+		((unsigned char *)p)[1];
+	/* return data in network byte order */
+	rs->servent.s_port = htons(port);
+    }
 
     rs->servent.s_proto = p[2] == 't' ? "tcp" : "udp";
     p += 4;  /* skip port(2) + proto(1) + aliascount(1) */
