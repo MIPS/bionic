@@ -349,11 +349,15 @@ libc_common_src_files += \
 	arch-mips/bionic/syscall.S \
 	arch-mips/bionic/vfork.S \
 	netbsd/resolv/res_state.c \
+
+libc_common_src_files += \
+	arch-mips/string/memset.S \
+	arch-mips/string/memcpy.S \
+	arch-mips/string/strlen.c
+
+libc_common_src_files += \
 	string/memmove.c \
-	string/memcpy.c \
-	string/memcmp.c \
-	string/memset.c \
-	string/strlen.c
+	string/memcmp.c
 
 libc_common_src_files += \
 	bionic/pthread.c \
