@@ -173,6 +173,7 @@ chk8w:
 	andi	t8,a2,0x1f	# is there a 32-byte chunk?
 				# the t8 is the reminder count past 32-bytes
 	beq	a2,t8,chk1w	# when a2=t8, no 32-byte chunk
+	 nop
 
 	lw	t0,0(a1)
 	lw	t1,4(a1)
