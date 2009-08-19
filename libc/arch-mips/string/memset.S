@@ -67,15 +67,15 @@ LEAF(memset,0)
 	subu	v1,zero,a0
 
 	# smear byte into 32 bit word
-#ifdef mips32r2
+#if (__mips==32) && (__mips_isa_rev==2)
 	ins     a1, a1, 8, 8        # Replicate fill byte into half-word.
 	ins     a1, a1, 16, 16      # Replicate fill byte into word.
 #else
 	and	a1,0xff
-	sll	v1,a1,8
-	or	a1,v1
-	sll	v1,a1,16
-	or	a1,v1
+	sll	AT,a1,8
+	or	a1,AT
+	sll	AT,a1,16
+	or	a1,AT
 #endif
 
 set0:	andi	v1,v1,0x3		# word-unaligned address?
@@ -84,7 +84,7 @@ set0:	andi	v1,v1,0x3		# word-unaligned address?
 	SWHI	a1,0(a0)
 	addu	a0,a0,v1
 
-# Here we have the "word-aligned" a0 (util the "last4")
+# Here we have the "word-aligned" a0 (until the "last4")
 aligned:
 	andi	t8,a2,0x3f	# any 64-byte chunks?
 				# t8 is the byte count past 64-byte chunks
