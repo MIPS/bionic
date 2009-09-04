@@ -69,7 +69,10 @@ LEAF(_setjmp, FRAMESZ)
 	PTR_ADDU v0, sp, FRAMESZ
 	REG_S	v0, SC_REGS+SP*REGSZ(a0)
 	REG_S	ra, SC_PC(a0)
+
 #if !defined(SOFTFLOAT)
+	li	v0, 1				# be nice if we could tell
+	REG_S	v0, SC_FPUSED(a0)		# sc_fpused = 1
 	cfc1	v0, $31
 #if _MIPS_FPSET == 32
 	sdc1	$f20, SC_FPREGS+((F20-F0)*REGSZ)(a0)
@@ -103,7 +106,7 @@ LEAF(_setjmp, FRAMESZ)
 	RESTORE_GP64
 	PTR_ADDU sp, FRAMESZ
 	j	ra
-	move	v0, zero
+	 move	v0, zero
 END(_setjmp)
 
 LEAF(_longjmp, FRAMESZ)
@@ -114,6 +117,7 @@ LEAF(_longjmp, FRAMESZ)
 	REG_L	v0, SC_REGS+ZERO*REGSZ(a0)
 	bne	v0, 0xACEDBADE, botch		# jump if error
 	REG_L	ra, SC_PC(a0)
+	REG_L	v0, SC_FPREGS+((FSR-F0)*REGSZ)(a0)
 	REG_L	s0, SC_REGS+S0*REGSZ(a0)
 	REG_L	s1, SC_REGS+S1*REGSZ(a0)
 	REG_L	s2, SC_REGS+S2*REGSZ(a0)
@@ -126,7 +130,6 @@ LEAF(_longjmp, FRAMESZ)
 	REG_L	gp, SC_REGS+GP*REGSZ(a0)
 	REG_L	sp, SC_REGS+SP*REGSZ(a0)
 #if !defined(SOFTFLOAT)
-	REG_L	v0, SC_FPREGS+((FSR-F0)*REGSZ)(a0)
 	ctc1	v0, $31
 #if _MIPS_FPSET == 32
 	ldc1	$f20, SC_FPREGS+((F20-F0)*REGSZ)(a0)
@@ -155,12 +158,13 @@ LEAF(_longjmp, FRAMESZ)
 	lwc1	$f30, SC_FPREGS+((F30-F0)*REGSZ)(a0)
 	lwc1	$f31, SC_FPREGS+((F31-F0)*REGSZ)(a0)
 #endif
-#endif /* !SOFTFLOAT */	
-	beql	a1, zero, 1f
-	li	a1, 1		# only executed if branch taken.
+#endif /* !SOFTFLOAT */
+	bne	a1, zero, 1f
+	 nop
+	li	a1, 1			# never return 0!
 1:
 	j	ra
-	move	v0, a1
+	 move	v0, a1
 
 botch:
 	jal	longjmperror

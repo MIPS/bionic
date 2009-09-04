@@ -129,7 +129,7 @@ botch:
 END(setjmp)
 
 
-NON_LEAF(longjmp, FRAMESZ, ra)
+LEAF(longjmp, FRAMESZ)
 	PTR_SUBU sp, FRAMESZ
 	SETUP_GP64(GPOFF, longjmp)
 	SAVE_GP(GPOFF)
@@ -146,7 +146,7 @@ NON_LEAF(longjmp, FRAMESZ, ra)
 	.set	noreorder	
 	REG_L	v0, SC_REGS+ZERO*REGSZ(a0)
 	bne	v0, 0xACEDBADE, botch		# jump if error
-	REG_L	ra, SC_PC(a0)
+	 REG_L	ra, SC_PC(a0)
 	REG_L	s0, SC_REGS+S0*REGSZ(a0)
 	REG_L	s1, SC_REGS+S1*REGSZ(a0)
 	REG_L	s2, SC_REGS+S2*REGSZ(a0)
@@ -190,10 +190,11 @@ NON_LEAF(longjmp, FRAMESZ, ra)
 	lwc1	$f31, SC_FPREGS+((F31-F0)*REGSZ)(a0)
 #endif
 #endif /* !SOFTFLOAT */
-	beql	a1, zero, 1f
-	li	a1, 1		# only executed if branch taken.
+	bne	a1, zero, 1f
+	 nop
+	li	a1, 1			# never return 0!
 1:
 	j	ra
-	move	v0, a1
-	
+	 move	v0, a1
+
 END(longjmp)
