@@ -40,7 +40,13 @@
 #define	_MIPS_ISA_MIPS2	2	/* R4000/R6000 */
 #define	_MIPS_ISA_MIPS3	3	/* R4000 */
 #define	_MIPS_ISA_MIPS4	4	/* TFP (R1x000) */
+#ifdef __linux__
+#define	_MIPS_ISA_MIPS5 5
+#define	_MIPS_ISA_MIPS32 6
+#define	_MIPS_ISA_MIPS64 7
+#else
 #define	_MIPS_ISA_MIPS32 32	/* MIPS32 */
+#endif
 
 #if !defined(ABICALLS) && !defined(_NO_ABICALLS)
 #define	ABICALLS	.abicalls
