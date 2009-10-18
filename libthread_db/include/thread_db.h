@@ -125,6 +125,8 @@ extern "C"{
 
 extern td_err_e td_ta_new(struct ps_prochandle const * proc_handle, td_thragent_t ** thread_agent);
 
+extern td_err_e td_ta_map_lwp2thr(td_thragent_t const *agent, thread_t lwpid, td_thrhandle_t *th);
+
 extern td_err_e td_ta_set_event(td_thragent_t const * agent, td_thr_events_t * event);
 
 extern td_err_e td_ta_event_addr(td_thragent_t const * agent, td_event_e event, td_notify_t * notify);
@@ -133,6 +135,7 @@ extern td_err_e td_ta_event_getmsg(td_thragent_t const * agent, td_event_msg_t *
 
 extern td_err_e td_ta_thr_iter(td_thragent_t const * agent, td_thr_iter_f * func, void * cookie,
                                td_thr_state_e state, int32_t prio, sigset_t * sigmask, uint32_t user_flags);
+
 
 extern char const ** td_symbol_list(void);
 

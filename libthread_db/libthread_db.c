@@ -105,6 +105,13 @@ td_ta_event_getmsg(td_thragent_t const * agent, td_event_msg_t * event)
     return TD_OK;
 }
 
+td_err_e
+td_ta_map_lwp2thr (td_thragent_t const *agent, thread_t lwpid, td_thrhandle_t *th)
+{
+    th->tid = lwpid;
+
+    return TD_OK;
+}
 
 td_err_e
 td_thr_get_info(td_thrhandle_t const * handle, td_thrinfo_t * info)
