@@ -52,12 +52,19 @@
 	.ent	__start
 __start:	
 _start:
+	bal	1f
+1:
+	.set	noreorder
+	.cpload	$ra
+	.set	reorder
+
 	move	$a0, $sp
 	move	$a1, $0
 	la	$a2, main
 	la	$a3, 1f
 	subu	$sp, 32
-	j	__libc_init
+	la	$t9, __libc_init
+	j	$t9
 	.end	__start
 
 1:	.long	__PREINIT_ARRAY__

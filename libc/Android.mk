@@ -410,9 +410,9 @@ ifeq ($(TARGET_ARCH),arm)
 endif # arm
 
 ifeq ($(TARGET_ARCH),mips)
-  libc_common_cflags += -march=$(TARGET_ARCH_VERSION)
-  libc_crt_target_cflags := -march=$(TARGET_ARCH_VERSION)
-endif # arm
+  libc_common_cflags += -fstrict-aliasing
+  libc_crt_target_cflags := $(TARGET_GLOBAL_CFLAGS)
+endif # mips
 
 ifeq ($(TARGET_ARCH),x86)
   libc_crt_target_cflags := -m32
