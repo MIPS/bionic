@@ -70,10 +70,17 @@ re_nr_line       = re.compile( r"#define __NR_(\w*)\s*\(__NR_SYSCALL_BASE\+\s*(\
 re_nr_clock_line = re.compile( r"#define __NR_(\w*)\s*\(__NR_timer_create\+(\w*)\)" )
 re_arm_nr_line   = re.compile( r"#define __ARM_NR_(\w*)\s*\(__ARM_NR_BASE\+\s*(\w*)\)" )
 re_x86_line      = re.compile( r"#define __NR_(\w*)\s*([0-9]*)" )
+re_mips_line     = re.compile( r"#define __NR_(\w*)\s*\(__NR_Linux\s*\+\s*([0-9]*)\)" )
 
 # now read the Linux arm header
 def process_nr_line(line,dict):
 
+    m = re_mips_line.match(line)
+    if m:
+        if dict["Linux"]==4000:
+            dict[m.group(1)] = int(m.group(2))
+        return
+        
     m = re_nr_line.match(line)
     if m:
         dict[m.group(1)] = int(m.group(2))
@@ -112,6 +119,7 @@ def process_header(header_file,dict):
 
 arm_dict = {}
 x86_dict = {}
+mips_dict = {}
 
 
 # remove trailing slash and '/include' from the linux_root, if any
@@ -144,12 +152,15 @@ if not os.path.exists(x86_unistd):
 
 process_header( linux_root+"/include/asm-arm/unistd.h", arm_dict )
 process_header( x86_unistd, x86_dict )
+process_header( linux_root+"/include/asm-mips/unistd.h", mips_dict)
 
 # now perform the comparison
 errors = 0
 for sc in syscalls:
     sc_name = sc["name"]
-    sc_id   = sc["id"]
+    sc_id   = sc["common"]
+    if sc_id < 0:
+        sc_id   = sc["armid"]
     if sc_id >= 0:
         if not arm_dict.has_key(sc_name):
             print "arm syscall %s not defined !!" % sc_name
@@ -160,13 +171,28 @@ for sc in syscalls:
 
 for sc in syscalls:
     sc_name = sc["name"]
-    sc_id2  = sc["id2"]
-    if sc_id2 >= 0:
+    sc_id   = sc["common"]
+    if sc_id < 0:
+        sc_id  = sc["x86id"]
+    if sc_id >= 0:
         if not x86_dict.has_key(sc_name):
             print "x86 syscall %s not defined !!" % sc_name
             errors += 1
-        elif x86_dict[sc_name] != sc_id2:
-            print "x86 syscall %s should be %d instead of %d !!" % (sc_name, x86_dict[sc_name], sc_id2)
+        elif x86_dict[sc_name] != sc_id:
+            print "x86 syscall %s should be %d instead of %d !!" % (sc_name, x86_dict[sc_name], sc_id)
+            errors += 1
+
+for sc in syscalls:
+    sc_name = sc["name"]
+    sc_id   = sc["common"]
+    if sc_id < 0:
+        sc_id  = sc["mipsid"]
+    if sc_id >= 0:
+        if not mips_dict.has_key(sc_name):
+            print "mips syscall %s not defined !!" % sc_name
+            errors += 1
+        elif mips_dict[sc_name] != sc_id:
+            print "mips syscall %s should be %d instead of %d !!" % (sc_name, mips_dict[sc_name], sc_id)
             errors += 1
 
 if errors == 0:

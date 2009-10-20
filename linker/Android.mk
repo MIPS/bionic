@@ -9,11 +9,19 @@ LOCAL_SRC_FILES:= \
 	debugger.c \
 	ba.c
 
+ifeq ($(TARGET_ARCH), mips)
+LINKER_TEXT_BASE := 0x7F000100
+# The maximum size set aside for the linker, from
+# LINKER_TEXT_BASE rounded down to a megabyte.
+LINKER_AREA_SIZE := 0x00100000
+endif
+ifeq ($(TARGET_ARCH), arm)
 LINKER_TEXT_BASE := 0xB0000100
-
 # The maximum size set aside for the linker, from
 # LINKER_TEXT_BASE rounded down to a megabyte.
 LINKER_AREA_SIZE := 0x01000000
+endif
+
 
 LOCAL_LDFLAGS := -Wl,-Ttext,$(LINKER_TEXT_BASE)
 
@@ -31,7 +39,11 @@ else
   ifeq ($(TARGET_ARCH),x86)
     LOCAL_CFLAGS += -DANDROID_X86_LINKER
   else
-    $(error Unsupported TARGET_ARCH $(TARGET_ARCH))
+    ifeq ($(TARGET_ARCH),mips)
+      LOCAL_CFLAGS += -DANDROID_MIPS_LINKER
+    else
+      $(error Unsupported TARGET_ARCH $(TARGET_ARCH))
+    endif
   endif
 endif
 

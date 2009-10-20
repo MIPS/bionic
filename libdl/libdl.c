@@ -29,6 +29,9 @@ void *dl_unwind_find_exidx(void *pc, int *pcount) { return 0; }
  * It won't affect anything since these are just symbols anyway */
 int dl_iterate_phdr(int (*cb)(void *info, void *size, void *data),
                     void *data) { return 0; }
+#elif defined(__mips__)
+int dl_iterate_phdr(int (*cb)(void *info, void *size, void *data),
+                    void *data) { return 0; }
 #else
-#error Unsupported architecture. Only arm and x86 are supported.
+#error Unsupported architecture. Only mips, arm and x86 are supported.
 #endif
