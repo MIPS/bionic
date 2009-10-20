@@ -1540,6 +1540,7 @@ register struct tm * const		tmp;
 		tdays -= leapdays;
 		y = newy;
 	}
+#ifndef __mips__
 	{
 		register long	seconds;
 
@@ -1547,6 +1548,7 @@ register struct tm * const		tmp;
 		tdays = seconds / SECSPERDAY;
 		rem += seconds - tdays * SECSPERDAY;
 	}
+#endif
 	/*
 	** Given the range, we can now fearlessly cast...
 	*/
