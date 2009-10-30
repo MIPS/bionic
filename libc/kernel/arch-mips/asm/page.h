@@ -12,8 +12,21 @@
 #ifndef _ASM_PAGE_H
 #define _ASM_PAGE_H
 
-#define PAGE_SHIFT 12
+#ifdef PAGE_SHIFT
 #define PAGE_SIZE (1UL << PAGE_SHIFT)
 #define PAGE_MASK (~((1 << PAGE_SHIFT) - 1))
+#else
+/*
+ * Determine page size parameters at runtime
+ * Use getpagesize() in preference to sysconf() because
+ * it's implemented as an inline variable read
+ */
+#include <unistd.h>
+#include <string.h>
+#define PAGE_SIZE_DYNAMIC
+#define PAGE_SIZE getpagesize()
+#define PAGE_SHIFT (ffs(getpagesize())-1)
+#define PAGE_MASK (~(PAGE_SIZE - 1))
+#endif
 
 #endif
