@@ -53,7 +53,7 @@
 
 #endif
 
-#if _MIPS_SIM == (_MIPS_SIM_ABI64 || _MIPS_SIM == _MIPS_SIM_NABI32)
+#if (_MIPS_SIM == _MIPS_SIM_ABI64) || (_MIPS_SIM == _MIPS_SIM_NABI32)
 
 #define fv0 $f0  
 #define fv1 $f2
