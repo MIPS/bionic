@@ -95,8 +95,8 @@ unsigned int __page_size;
 unsigned int __page_mask;
 #else
 /* Use the PAGE_SIZE value defined in asm/page.h */
-const unsigned int __page_size = PAGE_SIZE;
-const unsigned int __page_mask = PAGE_SIZE-1;
+unsigned int __page_size = PAGE_SIZE;
+unsigned int __page_mask = PAGE_SIZE-1;
 #endif
 
 int debug_verbosity;
