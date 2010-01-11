@@ -532,7 +532,11 @@ _do_lookup(soinfo *si, const char *name, unsigned *base)
 
     for(d = si->dynamic; *d; d += 2) {
         if(d[0] == DT_NEEDED){
+#ifdef ANDROID_MIPS_LINKER
+            lsi = find_library(si->strtab + d[1]);
+#else
             lsi = (soinfo *)d[1];
+#endif
             if (!validate_soinfo(lsi)) {
                 DL_ERR("%5d bad DT_NEEDED pointer in %s",
                        pid, si->name);
@@ -1312,8 +1316,12 @@ unsigned unload_library(soinfo *si)
 
         for(d = si->dynamic; *d; d += 2) {
             if(d[0] == DT_NEEDED){
+#ifdef	ANDROID_MIPS_LINKER
+                soinfo *lsi = find_library(si->strtab + d[1]);
+#else
                 soinfo *lsi = (soinfo *)d[1];
                 d[1] = 0;
+#endif
                 if (validate_soinfo(lsi)) {
                     TRACE("%5d %s needs to unload %s\n", pid,
                           si->name, lsi->name);
@@ -2022,7 +2030,11 @@ static int link_image(soinfo *si, unsigned wr_offset)
                later on when we resolve relocations, trying to look up a symgol
                with dlsym().
             */
+#ifdef  ANDROID_MIPS_LINKER
+            /*The dynamic section is supposed to be readonly, so for now do things the slow way */
+#else
             d[1] = (unsigned)lsi;
+#endif
             lsi->refcount++;
         }
     }
