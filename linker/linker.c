@@ -115,6 +115,11 @@ static const char *ldpaths[LDPATH_MAX + 1];
 int debug_verbosity;
 static int pid;
 
+#ifdef LINKER_DEBUG
+/* preallocate stdout buffer so that stdio code does not need to use malloc */
+static char buf[BUFSIZ];
+#endif
+
 #if STATS
 struct _link_stats linker_stats;
 #endif
@@ -1834,6 +1839,10 @@ unsigned __linker_init(unsigned **elfdata)
     __set_tls(__tls_area);
 
     pid = getpid();
+
+#if LINKER_DEBUG
+    setvbuf(stdout, buf, _IOLBF, BUFSIZ);
+#endif
 
 #if TIMING
     struct timeval t0, t1;
