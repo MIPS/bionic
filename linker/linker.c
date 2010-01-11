@@ -519,16 +519,27 @@ static Elf32_Sym *
 _do_lookup(soinfo *si, const char *name, unsigned *base)
 {
     unsigned elf_hash = 0;
-    Elf32_Sym *s;
-    unsigned *d;
-    soinfo *lsi = si;
+    Elf32_Sym *s, *ws;
+    unsigned *d, wref = 0;
+    soinfo *si_weak = NULL, *lsi = si;
 
     /* Look for symbols in the local scope first (the object who is
      * searching). This happens with C++ templates on i386 for some
      * reason. */
     s = _do_lookup_in_so(si, name, &elf_hash);
-    if(s != NULL)
-        goto done;
+    if (s != NULL) {
+        if (ELF32_ST_BIND(s->st_info) != STB_WEAK) {
+            goto done;
+        } else {
+            si_weak = lsi;
+            ws = s;
+	    if (s->st_shndx != 0) 
+                wref = 1;
+            else
+            /* We have not yet found a reference to the weak symbol*/
+                wref = 0;
+        }
+    }
 
     for(d = si->dynamic; *d; d += 2) {
         if(d[0] == DT_NEEDED){
@@ -546,8 +557,27 @@ _do_lookup(soinfo *si, const char *name, unsigned *base)
             DEBUG("%5d %s: looking up %s in %s\n",
                   pid, si->name, name, lsi->name);
             s = _do_lookup_in_so(lsi, name, &elf_hash);
-            if(s != NULL)
-                goto done;
+            if(s != NULL) {
+                if (ELF32_ST_BIND(s->st_info) != STB_WEAK) {
+                    goto done;
+                } else {   
+                    if ((wref == 0) && (s->st_shndx != 0)) {
+                        si_weak = lsi;
+                        ws = s;
+                        wref = 1;
+                        goto done;
+                    } else if ((wref == 0) && (s->st_shndx == 0)) {
+                        /* We need to remember the weak references although they
+                         * are not defined. Their got entries are set to zero.
+                         */
+			if (!si_weak) {
+                            si_weak = lsi;
+                            ws = s;
+                        }
+                    }
+                    s = NULL;
+                }
+            }
         }
     }
 
@@ -561,6 +591,8 @@ _do_lookup(soinfo *si, const char *name, unsigned *base)
         DEBUG("%5d %s: looking up %s in executable %s\n",
               pid, si->name, name, lsi->name);
         s = _do_lookup_in_so(lsi, name, &elf_hash);
+        if (s && (ELF32_ST_BIND(s->st_info) == STB_WEAK) && wref)
+            s = NULL;
     }
 #endif
 
@@ -571,6 +603,11 @@ done:
                    pid, si->name, name, s->st_value, lsi->name, lsi->base);
         *base = lsi->base;
         return s;
+    } else {
+        if (si_weak) {
+            *base = si_weak->base;
+            return ws;
+        }
     }
 
     return 0;
