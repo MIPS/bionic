@@ -4,7 +4,7 @@ import sys, os, commands, string
 
 # support Bionic architectures, add new ones as appropriate
 #
-bionic_archs = [ "arm", "x86" ]
+bionic_archs = [ "arm", "x86", "mips" ]
 
 # basic debugging trace support
 # call D_setlevel to set the verbosity level
@@ -132,7 +132,7 @@ class SysCallsTxtParser:
         self.syscalls = []
         self.lineno   = 0
 
-    def E(msg):
+    def E(self,msg):
         print "%d: %s" % (self.lineno, msg)
 
     def parse_line(self, line):
@@ -192,23 +192,37 @@ class SysCallsTxtParser:
 
         number = line[pos_rparen+1:].strip()
         if number == "stub":
-            syscall_id  = -1
-            syscall_id2 = -1
+            syscall_common = -1
+            syscall_arm  = -1
+            syscall_x86 = -1
+            syscall_mips = -1
         else:
             try:
                 if number[0] == '#':
                     number = number[1:].strip()
                 numbers = string.split(number,',')
-                syscall_id  = int(numbers[0])
-                syscall_id2 = syscall_id
-                if len(numbers) > 1:
-                    syscall_id2 = int(numbers[1])
+                if len(numbers) == 1:
+                    syscall_common = int(numbers[0])
+                    syscall_arm = -1
+                    syscall_x86 = -1
+                    syscall_mips = -1
+                else:
+                    if len(numbers) == 3:
+                        syscall_common = -1
+                        syscall_arm  = int(numbers[0])
+                        syscall_x86 = int(numbers[1])
+                        syscall_mips = int(numbers[2])
+                    else:
+                        E("invalid syscall number format in '%s'" % line)
+                        return
             except:
                 E("invalid syscall number in '%s'" % line)
                 return
 
-        t = { "id"     : syscall_id,
-              "id2"    : syscall_id2,
+        t = { "armid"  : syscall_arm,
+              "x86id"  : syscall_x86,
+              "mipsid" : syscall_mips,
+              "common" : syscall_common,
               "cid"    : call_id,
               "name"   : syscall_name,
               "func"   : syscall_func,

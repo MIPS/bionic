@@ -175,7 +175,6 @@ libc_common_src_files := \
 	string/memccpy.c \
 	string/memchr.c \
 	string/memmem.c \
-	string/memmove.c.arm \
 	string/memrchr.c \
 	string/memswap.c \
 	string/strcasecmp.c \
@@ -259,7 +258,6 @@ libc_common_src_files := \
 	netbsd/resolv/res_mkquery.c \
 	netbsd/resolv/res_query.c \
 	netbsd/resolv/res_send.c \
-	netbsd/resolv/res_state.c.arm \
 	netbsd/resolv/res_cache.c \
 	netbsd/net/nsdispatch.c \
 	netbsd/net/getaddrinfo.c \
@@ -278,6 +276,7 @@ libc_common_src_files := \
 # Architecture specific source files go here
 # =========================================================
 ifeq ($(TARGET_ARCH),arm)
+
 libc_common_src_files += \
 	bionic/eabi.c \
 	arch-arm/bionic/__get_pc.S \
@@ -298,6 +297,8 @@ libc_common_src_files += \
 	arch-arm/bionic/sigsetjmp.S \
 	arch-arm/bionic/strlen.c.arm \
 	arch-arm/bionic/syscall.S \
+	netbsd/resolv/res_state.c.arm \
+	string/memmove.c.arm \
 	unistd/socketcalls.c
 
 # These files need to be arm so that gdbserver
@@ -315,7 +316,48 @@ libc_arch_static_src_files := \
 
 libc_arch_dynamic_src_files := \
 	arch-arm/bionic/exidx_dynamic.c
-else # !arm
+endif # arm
+
+ifeq ($(TARGET_ARCH),mips)
+libc_common_src_files += \
+	arch-mips/bionic/__get_sp.S \
+	arch-mips/bionic/__get_tls.c \
+	arch-mips/bionic/__set_tls.c \
+	arch-mips/bionic/_exit_with_stack_teardown.S \
+	arch-mips/bionic/_setjmp.S \
+	arch-mips/bionic/atomics_mips.S \
+	arch-mips/bionic/bzero.S \
+	arch-mips/bionic/cacheflush.c \
+	arch-mips/bionic/clone.S \
+	arch-mips/bionic/clonecall.S \
+	arch-mips/bionic/ffs.S \
+	arch-mips/bionic/memcmp16.S \
+	arch-mips/bionic/pipe.S \
+	arch-mips/bionic/setjmp.S \
+	arch-mips/bionic/sigsetjmp.S \
+	arch-mips/bionic/syscall.S \
+	arch-mips/bionic/vfork.S \
+	netbsd/resolv/res_state.c \
+
+libc_common_src_files += \
+	arch-mips/string/memset.S \
+	arch-mips/string/memcpy.S \
+	arch-mips/string/strlen.c
+
+libc_common_src_files += \
+	string/memmove.c \
+	string/memcmp.c
+
+libc_common_src_files += \
+	bionic/pthread.c \
+	bionic/pthread-timers.c \
+	bionic/ptrace.c
+
+# this is needed for static versions of libc
+libc_arch_static_src_files := \
+	arch-mips/bionic/dl_iterate_phdr_static.c
+
+endif # mips
 
 ifeq ($(TARGET_ARCH),x86)
 libc_common_src_files += \
@@ -343,7 +385,6 @@ libc_arch_static_src_files := \
 
 libc_arch_dynamic_src_files :=
 endif # x86
-endif # !arm
 
 # Define some common cflags
 # ========================================================
@@ -378,9 +419,13 @@ ifeq ($(TARGET_ARCH),arm)
     libc_common_cflags += -DHAVE_ARM_TLS_REGISTER
   endif
 else # !arm
-  ifeq ($(TARGET_ARCH),x86)
-    libc_crt_target_cflags := -m32
-  endif # x86
+	ifeq ($(TARGET_ARCH),mips)
+	  libc_common_cflags += -march=$(TARGET_ARCH_VERSION)
+	  libc_crt_target_cflags := -march=$(TARGET_ARCH_VERSION)
+	endif # mips
+	ifeq ($(TARGET_ARCH),x86)
+	  libc_crt_target_cflags := -m32
+	endif # x86
 endif # !arm
 
 # Define some common includes
@@ -395,6 +440,23 @@ libc_common_c_includes := \
 # which are needed to build all other objects (shared/static libs and
 # executables)
 # ==========================================================================
+
+ifeq ($(TARGET_ARCH),mips)
+# we only need begin_so/end_so for mips, since it needs an appropriate .init
+# section in the shared library with a function to call all the entries in
+# .ctors section.
+GEN := $(TARGET_OUT_STATIC_LIBRARIES)/crtbegin_so.o
+$(GEN): $(LOCAL_PATH)/arch-$(TARGET_ARCH)/bionic/crtbegin_so.S
+	@mkdir -p $(dir $@)
+	$(TARGET_CC) $(libc_crt_target_cflags) -o $@ -c $<
+ALL_GENERATED_SOURCES += $(GEN)
+
+GEN := $(TARGET_OUT_STATIC_LIBRARIES)/crtend_so.o
+$(GEN): $(LOCAL_PATH)/arch-$(TARGET_ARCH)/bionic/crtend_so.S
+	@mkdir -p $(dir $@)
+	$(TARGET_CC) $(libc_crt_target_cflags) -o $@ -c $<
+ALL_GENERATED_SOURCES += $(GEN)
+endif # TARGET_ARCH == mips
 
 ifeq ($(TARGET_ARCH),x86)
 # we only need begin_so/end_so for x86, since it needs an appropriate .init
@@ -494,7 +556,11 @@ LOCAL_CFLAGS := $(libc_common_cflags)
 
 ifeq ($(WITH_MALLOC_CHECK_LIBC_A),true)
   LOCAL_CFLAGS += -DMALLOC_LEAK_CHECK
-  LOCAL_SRC_FILES += bionic/malloc_leak.c.arm
+  ifeq ($(TARGET_ARCH),arm)
+    LOCAL_SRC_FILES += bionic/malloc_leak.c.arm
+  else
+    LOCAL_SRC_FILES += bionic/malloc_leak.c
+  endif
 endif
 
 LOCAL_C_INCLUDES := $(libc_common_c_includes)
