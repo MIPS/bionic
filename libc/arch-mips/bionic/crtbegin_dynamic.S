@@ -52,8 +52,10 @@
 	.ent	__start
 __start:	
 _start:
+	bal	1f
+1:
 	.set	noreorder
-	.cpload	$t9
+	.cpload	$ra
 	.set	reorder
 
 	move	$a0, $sp
