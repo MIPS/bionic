@@ -239,7 +239,6 @@ struct mallinfo mallinfo()
 }
 
 void* valloc(size_t bytes) {
-    /* assume page size of 4096 bytes */
     return memalign( getpagesize(), bytes );
 }
 

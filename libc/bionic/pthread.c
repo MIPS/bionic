@@ -66,7 +66,9 @@ static const pthread_attr_t gDefaultPthreadAttr = {
     .flags = 0,
     .stack_base = NULL,
     .stack_size = DEFAULT_STACKSIZE,
+#if !defined(PAGE_SIZE_DYNAMIC)
     .guard_size = PAGE_SIZE,
+#endif
     .sched_policy = SCHED_NORMAL,
     .sched_priority = 0
 };
@@ -192,6 +194,9 @@ void _init_thread(pthread_internal_t * thread, pid_t kernel_id, pthread_attr_t *
 {
     if (attr == NULL) {
         thread->attr = gDefaultPthreadAttr;
+#if defined(PAGE_SIZE_DYNAMIC)
+	thread->attr.guard_size = PAGE_SIZE;
+#endif
     } else {
         thread->attr = *attr;
     }

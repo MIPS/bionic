@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <elf.h>
+#include <linux/auxvec.h>
 #include <asm/page.h>
 #include "pthread_internal.h"
 #include "atexit.h"
@@ -45,10 +46,41 @@ extern pid_t    gettid(void);
 char*  __progname;
 char **environ;
 
-/* from asm/page.h */
+#if defined(PAGE_SIZE_DYNAMIC)
+/*
+ * Extract system page size from aux vector
+ * which is found after the environment variables
+ */
+unsigned int __page_size;
+unsigned int __page_shift;
+static inline void
+findpagesize (char **envp)
+{
+  unsigned int *vecs = (unsigned int *)envp;
+  while (*vecs++)
+    ;
+  while(vecs[0] != 0) {
+    if (vecs[0] == AT_PAGESZ) {
+      __page_size = vecs[1];
+      __page_shift = ffs(__page_size) - 1; 
+      break;
+    }
+    vecs += 2;
+  }
+  /* If there was no page size then assume the default size */ 
+  if (__page_size == 0) {
+    __page_size = 4096;
+    __page_shift = 12;
+  }
+}
+#else
+/* Use constants from asm/page.h */
 unsigned int __page_size = PAGE_SIZE;
 unsigned int __page_shift = PAGE_SHIFT;
-
+static inline void
+findpagesize(char **envp) {
+}
+#endif
 
 int __system_properties_init(void);
 
@@ -61,11 +93,14 @@ void __libc_init_common(uintptr_t *elfdata)
     pthread_attr_t             thread_attr;
     static pthread_internal_t  thread;
     static void*               tls_area[BIONIC_TLS_SLOTS];
+    unsigned stacktop, stacksize, stackbottom;
+
+    findpagesize(envp);
 
     /* setup pthread runtime and maint thread descriptor */
-    unsigned stacktop = (__get_sp() & ~(PAGE_SIZE - 1)) + PAGE_SIZE;
-    unsigned stacksize = 128 * 1024;
-    unsigned stackbottom = stacktop - stacksize;
+    stacktop = (__get_sp() & ~(__page_size - 1)) + __page_size;
+    stacksize = 128 * 1024;
+    stackbottom = stacktop - stacksize;
 
     pthread_attr_init(&thread_attr);
     pthread_attr_setstack(&thread_attr, (void*)stackbottom, stacksize);
