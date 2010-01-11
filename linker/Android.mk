@@ -40,6 +40,7 @@ else
     LOCAL_CFLAGS += -DANDROID_X86_LINKER
   else
     ifeq ($(TARGET_ARCH),mips)
+      LOCAL_LDFLAGS += -Wl,--section-start,.rel.dyn=0x7f0f0000
       LOCAL_CFLAGS += -DANDROID_MIPS_LINKER
     else
       $(error Unsupported TARGET_ARCH $(TARGET_ARCH))
