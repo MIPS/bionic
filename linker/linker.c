@@ -73,8 +73,6 @@
  * - cleaner error reporting
  * - after linking, set as much stuff as possible to READONLY
  *   and NOEXEC
- * - linker hardcodes PAGE_SIZE and PAGE_MASK because the kernel
- *   headers provide versions that are negative...
  * - allocate space for soinfo structs dynamically instead of
  *   having a hard limit (64)
 */
@@ -111,6 +109,17 @@ static inline int validate_soinfo(soinfo *si)
 
 static char ldpaths_buf[LDPATH_BUFSIZE];
 static const char *ldpaths[LDPATH_MAX + 1];
+
+
+#if defined(PAGE_SIZE_DYNAMIC)
+/* Determine the system page size from auxvec */
+unsigned int __page_size;
+unsigned int __page_mask;
+#else
+/* Use the PAGE_SIZE value defined in asm/page.h */
+const unsigned int __page_size = PAGE_SIZE;
+const unsigned int __page_mask = PAGE_SIZE-1;
+#endif
 
 int debug_verbosity;
 static int pid;
@@ -671,9 +680,10 @@ static int open_library(const char *name)
     return -1;
 }
 
-/* temporary space for holding the first page of the shared lib
+/* temporary space for holding the start of the shared lib
  * which contains the elf header (with the pht). */
-static unsigned char __header[PAGE_SIZE];
+#define HEADER_SIZE 4096
+static unsigned char __header[HEADER_SIZE];
 
 typedef struct {
     long mmap_addr;
@@ -799,10 +809,10 @@ get_lib_extents(int fd, const char *name, void *__hdr, unsigned *total_sz)
     }
 
     /* truncate min_vaddr down to page boundary */
-    min_vaddr &= ~PAGE_MASK;
+    min_vaddr &= ~__page_mask;
 
     /* round max_vaddr up to the next page */
-    max_vaddr = (max_vaddr + PAGE_SIZE - 1) & ~PAGE_MASK;
+    max_vaddr = (max_vaddr + __page_size - 1) & ~__page_mask;
 
     *total_sz = (max_vaddr - min_vaddr);
     return (unsigned)req_base;
@@ -922,16 +932,16 @@ load_segments(int fd, void *header, soinfo *si)
         if (phdr->p_type == PT_LOAD) {
             DEBUG_DUMP_PHDR(phdr, "PT_LOAD", pid);
             /* we want to map in the segment on a page boundary */
-            tmp = base + (phdr->p_vaddr & (~PAGE_MASK));
+            tmp = base + (phdr->p_vaddr & (~__page_mask));
             /* add the # of bytes we masked off above to the total length. */
-            len = phdr->p_filesz + (phdr->p_vaddr & PAGE_MASK);
+            len = phdr->p_filesz + (phdr->p_vaddr & __page_mask);
 
             TRACE("[ %d - Trying to load segment from '%s' @ 0x%08x "
                   "(0x%08x). p_vaddr=0x%08x p_offset=0x%08x ]\n", pid, si->name,
                   (unsigned)tmp, len, phdr->p_vaddr, phdr->p_offset);
             pbase = mmap(tmp, len, PFLAGS_TO_PROT(phdr->p_flags),
                          MAP_PRIVATE | MAP_FIXED, fd,
-                         phdr->p_offset & (~PAGE_MASK));
+                         phdr->p_offset & (~__page_mask));
             if (pbase == MAP_FAILED) {
                 DL_ERR("%d failed to map segment from '%s' @ 0x%08x (0x%08x). "
                       "p_vaddr=0x%08x p_offset=0x%08x", pid, si->name,
@@ -941,8 +951,8 @@ load_segments(int fd, void *header, soinfo *si)
 
             /* If 'len' didn't end on page boundary, and it's a writable
              * segment, zero-fill the rest. */
-            if ((len & PAGE_MASK) && (phdr->p_flags & PF_W))
-                memset((void *)(pbase + len), 0, PAGE_SIZE - (len & PAGE_MASK));
+            if ((len & __page_mask) && (phdr->p_flags & PF_W))
+                memset((void *)(pbase + len), 0, __page_size - (len & __page_mask));
 
             /* Check to see if we need to extend the map for this segment to
              * cover the diff between filesz and memsz (i.e. for bss).
@@ -971,8 +981,8 @@ load_segments(int fd, void *header, soinfo *si)
              *                  |                     |
              *                 _+---------------------+  page boundary
              */
-            tmp = (unsigned char *)(((unsigned)pbase + len + PAGE_SIZE - 1) &
-                                    (~PAGE_MASK));
+            tmp = (unsigned char *)(((unsigned)pbase + len + __page_size - 1) &
+                                    (~__page_mask));
             if (tmp < (base + phdr->p_vaddr + phdr->p_memsz)) {
                 extra_len = base + phdr->p_vaddr + phdr->p_memsz - tmp;
                 TRACE("[ %5d - Need to extend segment from '%s' @ 0x%08x "
@@ -1004,7 +1014,7 @@ load_segments(int fd, void *header, soinfo *si)
             /* set the len here to show the full extent of the segment we
              * just loaded, mostly for debugging */
             len = (((unsigned)base + phdr->p_vaddr + phdr->p_memsz +
-                    PAGE_SIZE - 1) & (~PAGE_MASK)) - (unsigned)pbase;
+                    __page_size - 1) & (~__page_mask)) - (unsigned)pbase;
             TRACE("[ %5d - Successfully loaded segment from '%s' @ 0x%08x "
                   "(0x%08x). p_vaddr=0x%08x p_offset=0x%08x\n", pid, si->name,
                   (unsigned)pbase, len, phdr->p_vaddr, phdr->p_offset);
@@ -1080,7 +1090,7 @@ get_wr_offset(int fd, const char *name, Elf32_Ehdr *ehdr)
     unsigned wr_offset = 0xffffffff;
 
     shdr_start = mmap(0, shdr_sz, PROT_READ, MAP_PRIVATE, fd,
-                      ehdr->e_shoff & (~PAGE_MASK));
+                      ehdr->e_shoff & (~__page_mask));
     if (shdr_start == MAP_FAILED) {
         WARN("%5d - Could not read section header info from '%s'. Will not "
              "not be able to determine write-protect offset.\n", pid, name);
@@ -1109,9 +1119,9 @@ get_ctors_dtors(int fd, soinfo *si, Elf32_Ehdr *ehdr)
     int shstrtab_offs, shstrtab_sz;
     int cnt;
 
-#define PAGE_UP(x) (((x)+PAGE_MASK) & ~PAGE_MASK)
-#define PAGE_DOWN(x) ((x) & ~PAGE_MASK)
-#define PAGE_OFF(x) ((x) & PAGE_MASK)
+#define PAGE_UP(x) (((x)+__page_mask) & ~__page_mask)
+#define PAGE_DOWN(x) ((x) & ~__page_mask)
+#define PAGE_OFF(x) ((x) & __page_mask)
     shdr_offs = PAGE_DOWN(ehdr->e_shoff);
     shdr_sz = PAGE_UP(ehdr->e_shoff + ehdr->e_shnum*sizeof(Elf32_Shdr)) - shdr_offs;
     shdr_pages = mmap(0, shdr_sz, PROT_READ, MAP_PRIVATE, fd, shdr_offs);
@@ -1175,7 +1185,7 @@ load_library(const char *name)
         goto fail;
     }
 
-    if ((cnt = read(fd, &__header[0], PAGE_SIZE)) < 0) {
+    if ((cnt = read(fd, &__header[0], HEADER_SIZE)) < 0) {
         DL_ERR("read() failed!");
         goto fail;
     }
@@ -1824,8 +1834,8 @@ static int link_image(soinfo *si, unsigned wr_offset)
 
                     if (phdr->p_vaddr < si->wrprotect_start)
                         si->wrprotect_start = phdr->p_vaddr;
-                    _end = (((phdr->p_vaddr + phdr->p_memsz + PAGE_SIZE - 1) &
-                             (~PAGE_MASK)));
+                    _end = (((phdr->p_vaddr + phdr->p_memsz + __page_size - 1) &
+                             (~__page_mask)));
                     if (_end > si->wrprotect_end)
                         si->wrprotect_end = _end;
                 }
@@ -2205,6 +2215,12 @@ unsigned __linker_init(unsigned **elfdata)
         case AT_ENTRY:
             si->entry = vecs[1];
             break;
+#if defined(PAGE_SIZE_DYNAMIC)
+        case AT_PAGESZ:
+	    __page_size = vecs[1];
+	    __page_mask = __page_size-1;
+            break;
+#endif
         }
         vecs += 2;
     }
