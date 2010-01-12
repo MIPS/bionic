@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <endian.h>
 #include <netdb.h>
+#include <arpa/inet.h>
 #include "servent.h"
 #include "services.h"
 
