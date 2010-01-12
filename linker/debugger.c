@@ -117,7 +117,7 @@ void debugger_signal_handler(int n)
     }
 
     /* remove our net so we fault for real when we return */
-    signal(n, SIG_IGN);
+    signal(n, SIG_DFL);
 }
 
 void debugger_init()
