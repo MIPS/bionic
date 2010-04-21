@@ -31,42 +31,113 @@ void *memmove(void *dst, const void *src, size_t n)
 {
   const char *p = src;
   char *q = dst;
-  if (__builtin_expect(q < p, 1)) {
-    return memcpy(dst, src, n);
-  } else {
+  size_t c0, c1, i;
 #define PRELOAD_DISTANCE 64
-      /* a semi-optimized memmove(). we're preloading the src and dst buffers
-       * as we go */
-    size_t c0, c1, i;
+    /* a semi-optimized memmove(). we're preloading the src and dst buffers
+     * as we go */
+  if (__builtin_expect(q < p, 1)) {
+    __builtin_prefetch(p);
+    __builtin_prefetch(q);
+    if (PRELOAD_DISTANCE > 32) {
+      __builtin_prefetch(p + 32);
+      __builtin_prefetch(q + 32);
+    }
+    asm volatile("":::"memory");
+    if ((~((unsigned int)p ^ (unsigned int)q) & 3) == 3) {
+      /* src and dst are aligned */
+      while (n && ((unsigned int)p & 3) != 0) {
+        n--;
+        *q++ = *p++;
+      }
+      c0 = n & 0x1f;
+      c1 = n >> 5;
+      while ( c1-- ) {
+        /* note: we preload the destination as well, because the 1-byte at a time
+         * copy below doesn't take advantage of the write-buffer, we need
+         * to use the cache instead as a poor man's write-combiner */
+        __builtin_prefetch(p + PRELOAD_DISTANCE);
+        __builtin_prefetch(q + PRELOAD_DISTANCE);
+        /* do the prefetech as soon as possible, prevent the compiler to
+         * reorder the instructions above the prefetch */
+        asm volatile("":::"memory");
+        ((unsigned int *)q)[0] = ((unsigned int *)p)[0];
+        ((unsigned int *)q)[1] = ((unsigned int *)p)[1];
+        ((unsigned int *)q)[2] = ((unsigned int *)p)[2];
+        ((unsigned int *)q)[3] = ((unsigned int *)p)[3];
+        ((unsigned int *)q)[4] = ((unsigned int *)p)[4];
+        ((unsigned int *)q)[5] = ((unsigned int *)p)[5];
+        ((unsigned int *)q)[6] = ((unsigned int *)p)[6];
+        ((unsigned int *)q)[7] = ((unsigned int *)p)[7];
+        p += 32;
+        q += 32;
+      }
+      while ( c0-- ) {
+        *q++ = *p++;
+      }
+    } else {
+      c0 = n & 0x1f;
+      c1 = n >> 5;
+      while ( c1-- ) {
+        __builtin_prefetch(p - (PRELOAD_DISTANCE));
+        __builtin_prefetch(q - (PRELOAD_DISTANCE));
+        asm volatile("":::"memory");
+        for (i=0 ; i<32 ; i++) {
+          *q++ = *p++;
+        }
+      }
+      while ( c0--) {
+        *q++ = *p++;
+      }
+    }
+  } else {
     p += n;
     q += n;
-    /* note: we preload the destination as well, because the 1-byte at a time
-     * copy below doesn't take advantage of the write-buffer, we need
-     * to use the cache instead as a poor man's write-combiner */
-    __builtin_prefetch(p-1);
-    __builtin_prefetch(q-1);
+    __builtin_prefetch(p - 1);
+    __builtin_prefetch(q - 1);
     if (PRELOAD_DISTANCE > 32) {
-        __builtin_prefetch(p-(32+1));
-        __builtin_prefetch(q-(32+1));
+        __builtin_prefetch(p - (32 + 1));
+        __builtin_prefetch(q - (32 + 1));
     }
-    /* do the prefetech as soon as possible, prevent the compiler to
-     * reorder the instructions above the prefetch */
     asm volatile("":::"memory");
-    c0 = n & 0x1F; /* cache-line is 32 bytes */
-    c1 = n >> 5;
-    while ( c1-- ) {
-        /* ARMv6 can have up to 3 memory access outstanding */
-      __builtin_prefetch(p - (PRELOAD_DISTANCE+1));
-      __builtin_prefetch(q - (PRELOAD_DISTANCE+1));
-      asm volatile("":::"memory");
-      for (i=0 ; i<32 ; i++) {
+    if ((~((unsigned int)p ^ (unsigned int)q) & 3) == 3) {
+      while (n && ((unsigned int)p & 3) != 0) {
+        n--;
+        *--q = *--p;
+      }
+      c0 = n & 0x1f; /* cache-line is 32 bytes */
+      c1 = n >> 5;
+      while ( c1-- ) {
+        __builtin_prefetch(p - (PRELOAD_DISTANCE + 1));
+        __builtin_prefetch(q - (PRELOAD_DISTANCE + 1));
+        asm volatile("":::"memory");
+          q-=32; p-=32;
+          ((unsigned int *)q)[7] = ((unsigned int *)p)[7];
+          ((unsigned int *)q)[6] = ((unsigned int *)p)[6];
+          ((unsigned int *)q)[5] = ((unsigned int *)p)[5];
+          ((unsigned int *)q)[4] = ((unsigned int *)p)[4];
+          ((unsigned int *)q)[3] = ((unsigned int *)p)[3];
+          ((unsigned int *)q)[2] = ((unsigned int *)p)[2];
+          ((unsigned int *)q)[1] = ((unsigned int *)p)[1];
+          ((unsigned int *)q)[0] = ((unsigned int *)p)[0];
+      }
+      while ( c0-- ) {
+        *--q = *--p;
+      }
+    } else {
+      c0 = n & 0x1f;
+      c1 = n >> 5;
+      while (c1--) {
+        __builtin_prefetch(p - (PRELOAD_DISTANCE + 1));
+        __builtin_prefetch(q - (PRELOAD_DISTANCE + 1));
+        asm volatile("":::"memory");
+        for (i=0 ; i<32 ; i++) {
+          *--q = *--p;
+        }
+      }
+      while ( c0-- ) {
         *--q = *--p;
       }
     }
-    while ( c0-- ) {
-      *--q = *--p;
-    }
   }
-
   return dst;
 }
