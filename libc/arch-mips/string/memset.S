@@ -46,9 +46,11 @@
  * uses MIPS32 instructions.
  */	
 
-#ifdef EB
+#if defined(__MIPSEB__)
 #  define SWHI	swl		/* high part is left in big-endian	*/
-#else
+#endif
+
+#if defined(__MIPSEL__)
 #  define SWHI	swr		/* high part is right in little-endian	*/
 #endif
 

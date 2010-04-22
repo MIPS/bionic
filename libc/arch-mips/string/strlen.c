@@ -72,15 +72,41 @@ size_t strlen(const char *s)
 "	not	%[v]\n"
 "	subu	%[s],4\n"
 "	addu	%[l],%[s]\n"
-"	andi	%[t],%[v],0xff\n"
+#if defined(__MIPSEB__)
+"       li      $t3,0xff000000\n"
+"	and	%[t],%[v],$t3\n"
+#endif
+#if defined(__MIPSEL__)
+"	andi    %[t],%[v],0xff\n"
+#endif
 "	beqz	%[t],2f\n"
-"	 srl	%[v],8\n"
+#if defined(__MIPSEB__)
+"        sll    %[v],8\n"
+#endif
+#if defined(__MIPSEL__)
+"        srl    %[v],8\n"
+#endif
 "	addu	%[l],1\n"
-"       andi	%[t],%[v],0xff\n"
+#if defined(__MIPSEB__)
+"       and	%[t],%[v],$t3\n"
+#endif
+#if defined(__MIPSEL__)
+"       andi   %[t],%[v],0xff\n"
+#endif
 "	beqz	%[t],2f\n"
-"	 srl	%[v],8\n"
+#if defined(__MIPSEB__)
+"        sll    %[v],8\n"
+#endif
+#if defined(__MIPSEL__)
+"        srl    %[v],8\n"
+#endif 
 "	addu	%[l],1\n"
-"       andi	%[t],%[v],0xff\n"
+#if defined(__MIPSEB__)
+"       and     %[t],%[v],$t3\n"
+#endif
+#if defined(__MIPSEL__)
+"       andi   %[t],%[v],0xff\n"
+#endif
 "	beqz	%[t],2f\n"
 "	 nop\n"
 "	addu	%[l],1\n"

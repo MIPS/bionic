@@ -46,13 +46,15 @@
  * This routine could be optimized for MIPS64. The current code only
  * uses MIPS32 instructions.
  */	
-
-#ifdef EB
+#if defined(__MIPSEB__)
+//#ifdef EB
 #  define LWHI	lwl		/* high part is left in big-endian	*/
 #  define SWHI	swl		/* high part is left in big-endian	*/
 #  define LWLO	lwr		/* low part is right in big-endian	*/
 #  define SWLO	swr		/* low part is right in big-endian	*/
-#else
+#endif
+
+#if defined(__MIPSEL__)
 #  define LWHI	lwr		/* high part is right in little-endian	*/
 #  define SWHI	swr		/* high part is right in little-endian	*/
 #  define LWLO	lwl		/* low part is left in big-endian	*/
