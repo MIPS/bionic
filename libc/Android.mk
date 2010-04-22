@@ -420,7 +420,7 @@ ifeq ($(TARGET_ARCH),arm)
   endif
 else # !arm
 	ifeq ($(TARGET_ARCH),mips)
-	  libc_common_cflags += -march=$(TARGET_CPU_ARCH) -fstrict-aliasing
+	  libc_common_cflags += -march=$(TARGET_CPU_ARCH) $(TARGET_GLOBAL_CFLAGS)
 	  libc_crt_target_cflags := -march=$(TARGET_CPU_ARCH) $(TARGET_GLOBAL_CFLAGS)
 	endif # mips
 	ifeq ($(TARGET_ARCH),x86)
