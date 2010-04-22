@@ -69,7 +69,7 @@ LEAF(memset,0)
 	subu	v1,zero,a0
 
 	# smear byte into 32 bit word
-#if (__mips==32) && (__mips_isa_rev==2)
+#if (__mips==32) && (__mips_isa_rev>=2)
 	ins     a1, a1, 8, 8        # Replicate fill byte into half-word.
 	ins     a1, a1, 16, 16      # Replicate fill byte into word.
 #else
