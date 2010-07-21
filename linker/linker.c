@@ -73,8 +73,6 @@
  * - cleaner error reporting
  * - after linking, set as much stuff as possible to READONLY
  *   and NOEXEC
- * - linker hardcodes PAGE_SIZE and PAGE_MASK because the kernel
- *   headers provide versions that are negative...
  * - allocate space for soinfo structs dynamically instead of
  *   having a hard limit (64)
 */
@@ -807,10 +805,10 @@ get_lib_extents(int fd, const char *name, void *__hdr, unsigned *total_sz)
     }
 
     /* truncate min_vaddr down to page boundary */
-    min_vaddr &= ~PAGE_MASK;
+    min_vaddr &= PAGE_MASK;
 
     /* round max_vaddr up to the next page */
-    max_vaddr = (max_vaddr + PAGE_SIZE - 1) & ~PAGE_MASK;
+    max_vaddr = (max_vaddr + PAGE_SIZE - 1) & PAGE_MASK;
 
     *total_sz = (max_vaddr - min_vaddr);
     return (unsigned)req_base;
@@ -930,16 +928,16 @@ load_segments(int fd, void *header, soinfo *si)
         if (phdr->p_type == PT_LOAD) {
             DEBUG_DUMP_PHDR(phdr, "PT_LOAD", pid);
             /* we want to map in the segment on a page boundary */
-            tmp = base + (phdr->p_vaddr & (~PAGE_MASK));
+            tmp = base + (phdr->p_vaddr & PAGE_MASK);
             /* add the # of bytes we masked off above to the total length. */
-            len = phdr->p_filesz + (phdr->p_vaddr & PAGE_MASK);
+            len = phdr->p_filesz + (phdr->p_vaddr & ~PAGE_MASK);
 
             TRACE("[ %d - Trying to load segment from '%s' @ 0x%08x "
                   "(0x%08x). p_vaddr=0x%08x p_offset=0x%08x ]\n", pid, si->name,
                   (unsigned)tmp, len, phdr->p_vaddr, phdr->p_offset);
             pbase = mmap(tmp, len, PFLAGS_TO_PROT(phdr->p_flags),
                          MAP_PRIVATE | MAP_FIXED, fd,
-                         phdr->p_offset & (~PAGE_MASK));
+                         phdr->p_offset & PAGE_MASK);
             if (pbase == MAP_FAILED) {
                 DL_ERR("%d failed to map segment from '%s' @ 0x%08x (0x%08x). "
                       "p_vaddr=0x%08x p_offset=0x%08x", pid, si->name,
@@ -949,8 +947,8 @@ load_segments(int fd, void *header, soinfo *si)
 
             /* If 'len' didn't end on page boundary, and it's a writable
              * segment, zero-fill the rest. */
-            if ((len & PAGE_MASK) && (phdr->p_flags & PF_W))
-                memset((void *)(pbase + len), 0, PAGE_SIZE - (len & PAGE_MASK));
+            if ((len & ~PAGE_MASK) && (phdr->p_flags & PF_W))
+                memset((void *)(pbase + len), 0, PAGE_SIZE - (len & ~PAGE_MASK));
 
             /* Check to see if we need to extend the map for this segment to
              * cover the diff between filesz and memsz (i.e. for bss).
@@ -980,7 +978,7 @@ load_segments(int fd, void *header, soinfo *si)
              *                 _+---------------------+  page boundary
              */
             tmp = (unsigned char *)(((unsigned)pbase + len + PAGE_SIZE - 1) &
-                                    (~PAGE_MASK));
+                                    PAGE_MASK);
             if (tmp < (base + phdr->p_vaddr + phdr->p_memsz)) {
                 extra_len = base + phdr->p_vaddr + phdr->p_memsz - tmp;
                 TRACE("[ %5d - Need to extend segment from '%s' @ 0x%08x "
@@ -1012,7 +1010,7 @@ load_segments(int fd, void *header, soinfo *si)
             /* set the len here to show the full extent of the segment we
              * just loaded, mostly for debugging */
             len = (((unsigned)base + phdr->p_vaddr + phdr->p_memsz +
-                    PAGE_SIZE - 1) & (~PAGE_MASK)) - (unsigned)pbase;
+                    PAGE_SIZE - 1) & PAGE_MASK) - (unsigned)pbase;
             TRACE("[ %5d - Successfully loaded segment from '%s' @ 0x%08x "
                   "(0x%08x). p_vaddr=0x%08x p_offset=0x%08x\n", pid, si->name,
                   (unsigned)pbase, len, phdr->p_vaddr, phdr->p_offset);
@@ -1088,7 +1086,7 @@ get_wr_offset(int fd, const char *name, Elf32_Ehdr *ehdr)
     unsigned wr_offset = 0xffffffff;
 
     shdr_start = mmap(0, shdr_sz, PROT_READ, MAP_PRIVATE, fd,
-                      ehdr->e_shoff & (~PAGE_MASK));
+                      ehdr->e_shoff & PAGE_MASK);
     if (shdr_start == MAP_FAILED) {
         WARN("%5d - Could not read section header info from '%s'. Will not "
              "not be able to determine write-protect offset.\n", pid, name);
@@ -1117,9 +1115,9 @@ get_ctors_dtors(int fd, soinfo *si, Elf32_Ehdr *ehdr)
     int shstrtab_offs, shstrtab_sz;
     int cnt;
 
-#define PAGE_UP(x) (((x)+PAGE_MASK) & ~PAGE_MASK)
-#define PAGE_DOWN(x) ((x) & ~PAGE_MASK)
-#define PAGE_OFF(x) ((x) & PAGE_MASK)
+#define PAGE_UP(x) (((x)+PAGE_SIZE-1) & PAGE_MASK)
+#define PAGE_DOWN(x) ((x) & PAGE_MASK)
+#define PAGE_OFF(x) ((x) & ~PAGE_MASK)
     shdr_offs = PAGE_DOWN(ehdr->e_shoff);
     shdr_sz = PAGE_UP(ehdr->e_shoff + ehdr->e_shnum*sizeof(Elf32_Shdr)) - shdr_offs;
     shdr_pages = mmap(0, shdr_sz, PROT_READ, MAP_PRIVATE, fd, shdr_offs);
@@ -1128,20 +1126,20 @@ get_ctors_dtors(int fd, soinfo *si, Elf32_Ehdr *ehdr)
              "be able to run constructors/destructors.\n", pid, si->name);
         return;
     }
-    shdr = shdr_pages + PAGE_OFF(ehdr->e_shoff);
+    shdr = (Elf32_Shdr *)((char *)shdr_pages + PAGE_OFF(ehdr->e_shoff));
 
     strhdr = &shdr[ehdr->e_shstrndx];
     shstrtab_offs = PAGE_DOWN(strhdr->sh_offset);
     shstrtab_sz = PAGE_UP(strhdr->sh_offset + strhdr->sh_size) - shstrtab_offs;
     shstrtab_pages = mmap(0, shstrtab_sz, PROT_READ, MAP_PRIVATE, fd, shstrtab_offs);
     if (shstrtab_pages == MAP_FAILED) {
-        WARN("%5d - Could not read section header info from '%s'. Will not "
+        WARN("%5d - Could not read section header strings from '%s'. Will not "
              "be able to run constructors/destructors.\n", pid, si->name);
 	
 	munmap(shdr_pages, shdr_sz);
         return;
     }
-    shstrtab = shstrtab_pages + PAGE_OFF(strhdr->sh_offset);
+    shstrtab = (char *)shstrtab_pages + PAGE_OFF(strhdr->sh_offset);
 
     for(cnt = 0; cnt < ehdr->e_shnum; ++cnt, ++shdr) {
 	const char *name = shstrtab + shdr->sh_name;
@@ -1983,7 +1981,7 @@ static int link_image(soinfo *si, unsigned wr_offset)
                     if (phdr->p_vaddr < si->wrprotect_start)
                         si->wrprotect_start = phdr->p_vaddr;
                     _end = (((phdr->p_vaddr + phdr->p_memsz + PAGE_SIZE - 1) &
-                             (~PAGE_MASK)));
+                             PAGE_MASK));
                     if (_end > si->wrprotect_end)
                         si->wrprotect_end = _end;
                 }
