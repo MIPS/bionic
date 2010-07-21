@@ -189,6 +189,7 @@ ifeq ($(TARGET_ARCH),mips)
 	src/s_scalbnf.c
 
   libm_common_src_files += \
+	src/s_sincosl.c \
 	src/s_sincos.c \
 	src/s_sincosf.c
 
