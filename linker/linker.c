@@ -476,6 +476,11 @@ _do_lookup(soinfo *si, const char *name, unsigned *base)
     Elf32_Sym *s;
     unsigned *d;
     soinfo *lsi = si;
+#ifdef ANDROID_MIPS_LINKER
+    Elf32_Sym *ws;
+    unsigned wref = 0;
+    soinfo *si_weak = NULL;
+#endif
 
     /* Look for symbols in the local scope first (the object who is
      * searching). This happens with C++ templates on i386 for some
@@ -485,10 +490,27 @@ _do_lookup(soinfo *si, const char *name, unsigned *base)
      * The ELF specs are ambigious about treatment of weak definitions in
      * dynamic linking.  Some systems return the first definition found
      * and some the first non-weak definition.   This is system dependent.
-     * Here we return the first definition found for simplicity.  */
+     * Here we return the first definition found for simplicity except on MIPS
+     * where the first nonweak definition is needed */
     s = _elf_lookup(si, elf_hash, name);
+#ifndef ANDROID_MIPS_LINKER
     if(s != NULL)
         goto done;
+#else
+    if (s != NULL) {
+        if (ELF32_ST_BIND(s->st_info) != STB_WEAK) {
+            goto done;
+        } else {
+            si_weak = lsi;
+            ws = s;
+	    if (s->st_shndx != 0) 
+                wref = 1;
+            else
+            /* We have not yet found a reference to the weak symbol*/
+                wref = 0;
+        }
+    }
+#endif
 
     for(d = si->dynamic; *d; d += 2) {
         if(d[0] == DT_NEEDED){
@@ -506,8 +528,32 @@ _do_lookup(soinfo *si, const char *name, unsigned *base)
             DEBUG("%5d %s: looking up %s in %s\n",
                   pid, si->name, name, lsi->name);
             s = _elf_lookup(lsi, elf_hash, name);
+#ifndef ANDROID_MIPS_LINKER
             if(s != NULL)
                 goto done;
+#else
+            if(s != NULL) {
+                if (ELF32_ST_BIND(s->st_info) != STB_WEAK) {
+                    goto done;
+                } else {   
+                    if ((wref == 0) && (s->st_shndx != 0)) {
+                        si_weak = lsi;
+                        ws = s;
+                        wref = 1;
+                        goto done;
+                    } else if ((wref == 0) && (s->st_shndx == 0)) {
+                        /* We need to remember the weak references although they
+                         * are not defined. Their got entries are set to zero.
+                         */
+			if (!si_weak) {
+                            si_weak = lsi;
+                            ws = s;
+                        }
+                    }
+                    s = NULL;
+                }
+            }
+#endif
         }
     }
 
@@ -521,6 +567,10 @@ _do_lookup(soinfo *si, const char *name, unsigned *base)
         DEBUG("%5d %s: looking up %s in executable %s\n",
               pid, si->name, name, lsi->name);
         s = _elf_lookup(lsi, elf_hash, name);
+#ifdef ANDROID_MIPS_LINKER
+        if (s && (ELF32_ST_BIND(s->st_info) == STB_WEAK) && wref)
+            s = NULL;
+#endif
     }
 #endif
 
@@ -532,6 +582,12 @@ done:
         *base = lsi->base;
         return s;
     }
+#ifdef ANDROID_MIPS_LINKER
+    if (si_weak) {
+      *base = si_weak->base;
+      return ws;
+    }
+#endif
 
     return NULL;
 }
