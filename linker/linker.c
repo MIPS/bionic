@@ -2467,13 +2467,6 @@ unsigned __linker_init(unsigned **elfdata)
     if (ldpath_env && getuid() == geteuid() && getgid() == getegid())
         parse_library_path(ldpath_env, ":");
 
-    if(link_image(si, 0)) {
-        char errmsg[] = "CANNOT LINK EXECUTABLE\n";
-        write(2, __linker_dl_err_buf, strlen(__linker_dl_err_buf));
-        write(2, errmsg, sizeof(errmsg));
-        exit(-1);
-    }
-
 #if ALLOW_SYMBOLS_FROM_MAIN
     /* Set somain after we've loaded all the libraries in order to prevent
      * linking of symbols back to the main image, which is not set up at that
@@ -2481,6 +2474,13 @@ unsigned __linker_init(unsigned **elfdata)
      */
     somain = si;
 #endif
+
+    if(link_image(si, 0)) {
+        char errmsg[] = "CANNOT LINK EXECUTABLE\n";
+        write(2, __linker_dl_err_buf, strlen(__linker_dl_err_buf));
+        write(2, errmsg, sizeof(errmsg));
+        exit(-1);
+    }
 
 #if TIMING
     gettimeofday(&t1,NULL);
