@@ -1879,3 +1879,10 @@ int  pthread_once( pthread_once_t*  once_control,  void (*init_routine)(void) )
     }
     return 0;
 }
+
+#ifdef __mips__
+int pthread_cancel(pthread_t thread)
+{
+  return ESRCH;
+}
+#endif
