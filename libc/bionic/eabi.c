@@ -40,6 +40,7 @@ void* __dso_handle = 0;
  * variable from the shared object that contains the constructor/destructor
  */
 
+#ifdef __arm__
 /* Make this a weak symbol to avoid a multiple definition error when linking
  * with libstdc++-v3.  */
 int __attribute__((weak))
@@ -103,3 +104,4 @@ void __aeabi_memclr4(void *dest, size_t n) {
 void __aeabi_memclr(void *dest, size_t n) {
     __aeabi_memset(dest, n, 0);
 }
+#endif

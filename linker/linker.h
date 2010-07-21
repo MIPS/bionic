@@ -137,6 +137,8 @@ struct soinfo
     unsigned init_array_count;
     unsigned *fini_array;
     unsigned fini_array_count;
+    unsigned *ctors, ctors_count;
+    unsigned *dtors, dtors_count;
 
     void (*init_func)(void);
     void (*fini_func)(void);
@@ -147,6 +149,16 @@ struct soinfo
     unsigned ARM_exidx_count;
 #endif
 
+#ifdef ANDROID_MIPS_LINKER
+#if 0
+     /* not yet */
+     unsigned *mips_pltgot
+#endif
+     unsigned mips_symtabno;
+     unsigned mips_local_gotno;
+     unsigned mips_gotsym;
+#endif
+
     unsigned refcount;
     struct link_map linkmap;
 };
@@ -155,13 +167,19 @@ struct soinfo
 extern soinfo libdl_info;
 
 /* these must all be powers of two */
-#ifdef ARCH_SH
+#if defined(ANDROID_ARM_LINKER) || defined(ANDROID_X86_LINKER)
+#define LIBBASE 0x80000000
+#define LIBLAST 0x90000000
+#define LIBINC  0x00100000
+#endif
+#ifdef ANDROID_SH_LINKER
 #define LIBBASE 0x60000000
 #define LIBLAST 0x70000000
 #define LIBINC  0x00100000
-#else
-#define LIBBASE 0x80000000
-#define LIBLAST 0x90000000
+#endif
+#if defined(ANDROID_MIPS_LINKER)
+#define LIBBASE 0x50000000
+#define LIBLAST 0x60000000
 #define LIBINC  0x00100000
 #endif
 
@@ -193,6 +211,11 @@ extern soinfo libdl_info;
 #define R_SH_GLOB_DAT   163
 #define R_SH_JUMP_SLOT  164
 #define R_SH_RELATIVE   165
+
+#elif defined(ANDROID_MIPS_LINKER)
+
+#define R_MIPS_REL32		3
+#define R_MIPS_JUMP_SLOT	127
 
 #endif /* ANDROID_*_LINKER */
 
@@ -232,7 +255,7 @@ const char *linker_get_error(void);
 #ifdef ANDROID_ARM_LINKER 
 typedef long unsigned int *_Unwind_Ptr;
 _Unwind_Ptr dl_unwind_find_exidx(_Unwind_Ptr pc, int *pcount);
-#elif defined(ANDROID_X86_LINKER) || defined(ANDROID_SH_LINKER)
+#elif defined(ANDROID_X86_LINKER) || defined(ANDROID_SH_LINKER) || defined(ANDROID_MIPS_LINKER)
 int dl_iterate_phdr(int (*cb)(struct dl_phdr_info *, size_t, void *), void *);
 #endif
 

@@ -330,7 +330,48 @@ libc_arch_static_src_files := \
 
 libc_arch_dynamic_src_files := \
 	arch-arm/bionic/exidx_dynamic.c
-else # !arm
+endif # arm
+
+ifeq ($(TARGET_ARCH),mips)
+libc_common_src_files += \
+	bionic/eabi.c \
+	arch-mips/bionic/__get_sp.S \
+	arch-mips/bionic/__get_tls.c \
+	arch-mips/bionic/__set_tls.c \
+	arch-mips/bionic/_exit_with_stack_teardown.S \
+	arch-mips/bionic/_setjmp.S \
+	arch-mips/bionic/atomics_mips.S \
+	arch-mips/bionic/bzero.S \
+	arch-mips/bionic/cacheflush.c \
+	arch-mips/bionic/clone.S \
+	arch-mips/bionic/clonecall.S \
+	arch-mips/bionic/ffs.S \
+	arch-mips/bionic/memcmp16.S \
+	arch-mips/bionic/pipe.S \
+	arch-mips/bionic/setjmp.S \
+	arch-mips/bionic/sigsetjmp.S \
+	arch-mips/bionic/syscall.S \
+	arch-mips/bionic/vfork.S
+
+libc_common_src_files += \
+	arch-mips/string/memset.S \
+	arch-mips/string/memcpy.S \
+	arch-mips/string/strlen.c
+
+libc_common_src_files += \
+	string/memmove.c \
+	string/memcmp.c
+
+libc_common_src_files += \
+	bionic/pthread.c \
+	bionic/pthread-timers.c \
+	bionic/ptrace.c
+
+# this is needed for static versions of libc
+libc_arch_static_src_files := \
+	arch-mips/bionic/dl_iterate_phdr_static.c
+
+endif # mips
 
 ifeq ($(TARGET_ARCH),x86)
 libc_common_src_files += \
@@ -359,7 +400,7 @@ libc_arch_static_src_files := \
 	arch-x86/bionic/dl_iterate_phdr_static.c
 
 libc_arch_dynamic_src_files :=
-else # !x86
+endif # x86
 
 ifeq ($(TARGET_ARCH),sh)
 libc_common_src_files += \
@@ -390,9 +431,6 @@ libc_common_src_files += \
 	unistd/socketcalls.c
 endif # sh
 
-endif # !x86
-endif # !arm
-
 # Define some common cflags
 # ========================================================
 libc_common_cflags := \
@@ -401,7 +439,6 @@ libc_common_cflags := \
 		-DUSE_LOCKS 			\
 		-DREALLOC_ZERO_BYTES_FREES 	\
 		-D_LIBC=1 			\
-		-DSOFTFLOAT                     \
 		-DFLOATING_POINT		\
 		-DNEED_PSELECT=1		\
 		-DINET6 \
@@ -422,6 +459,7 @@ ifeq ($(strip $(DEBUG_BIONIC_LIBC)),true)
 endif
 
 ifeq ($(TARGET_ARCH),arm)
+  libc_common_cflags += -DSOFTFLOAT
   libc_common_cflags += -fstrict-aliasing
   libc_crt_target_cflags := -mthumb-interwork
   #
@@ -434,11 +472,17 @@ ifeq ($(TARGET_ARCH),arm)
   ifeq ($(ARCH_ARM_HAVE_TLS_REGISTER),true)
     libc_common_cflags += -DHAVE_ARM_TLS_REGISTER
   endif
-else # !arm
-  ifeq ($(TARGET_ARCH),x86)
-    libc_crt_target_cflags := -m32
-  endif # x86
-endif # !arm
+endif # arm
+ifeq ($(TARGET_ARCH),x86)
+  libc_crt_target_cflags := -m32
+endif # x86
+ifeq ($(TARGET_ARCH),mips)
+  ifneq ($(ARCH_MIPS_HAS_FPU),true)
+    libc_common_cflags += -DSOFTFLOAT
+  endif
+  libc_common_cflags += $(TARGET_GLOBAL_CFLAGS)
+  libc_crt_target_cflags := $(TARGET_GLOBAL_CFLAGS)
+endif # mips
 
 # Define some common includes
 # ========================================================
@@ -452,6 +496,23 @@ libc_common_c_includes := \
 # which are needed to build all other objects (shared/static libs and
 # executables)
 # ==========================================================================
+
+ifeq ($(TARGET_ARCH),mips)
+# we only need begin_so/end_so for mips, since it needs an appropriate .init
+# section in the shared library with a function to call all the entries in
+# .ctors section.
+GEN := $(TARGET_OUT_STATIC_LIBRARIES)/crtbegin_so.o
+$(GEN): $(LOCAL_PATH)/arch-$(TARGET_ARCH)/bionic/crtbegin_so.S
+	@mkdir -p $(dir $@)
+	$(TARGET_CC) $(libc_crt_target_cflags) -o $@ -c $<
+ALL_GENERATED_SOURCES += $(GEN)
+
+GEN := $(TARGET_OUT_STATIC_LIBRARIES)/crtend_so.o
+$(GEN): $(LOCAL_PATH)/arch-$(TARGET_ARCH)/bionic/crtend_so.S
+	@mkdir -p $(dir $@)
+	$(TARGET_CC) $(libc_crt_target_cflags) -o $@ -c $<
+ALL_GENERATED_SOURCES += $(GEN)
+endif # TARGET_ARCH == mips
 
 ifeq ($(TARGET_ARCH),x86)
 # we only need begin_so/end_so for x86, since it needs an appropriate .init
@@ -613,7 +674,7 @@ LOCAL_SRC_FILES := \
 
 LOCAL_MODULE:= libc_malloc_debug_leak
 
-LOCAL_SHARED_LIBRARIES := libc
+LOCAL_SHARED_LIBRARIES := libc libdl
 LOCAL_WHOLE_STATIC_LIBRARIES := libc_common
 LOCAL_SYSTEM_SHARED_LIBRARIES :=
 # Don't prelink

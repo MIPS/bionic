@@ -10,21 +10,45 @@ LOCAL_SRC_FILES:= \
 	debugger.c \
 	ba.c
 
-ifeq ($(TARGET_ARCH),sh)
-# SH-4A series virtual address range from 0x00000000 to 0x7FFFFFFF.
-LINKER_TEXT_BASE := 0x70000100
-else
+ifeq ($(TARGET_ARCH),arm)
 # This is aligned to 4K page boundary so that both GNU ld and gold work.  Gold
 # actually produces a correct binary with starting address 0xB0000100 but the
 # extra objcopy step to rename symbols causes the resulting binary to be misaligned
 # and unloadable.  Increasing the alignment adds an extra 3840 bytes in padding
 # but switching to gold saves about 1M of space.
 LINKER_TEXT_BASE := 0xB0001000
-endif
-
 # The maximum size set aside for the linker, from
 # LINKER_TEXT_BASE rounded down to a megabyte.
 LINKER_AREA_SIZE := 0x01000000
+endif
+
+ifeq ($(TARGET_ARCH),x86)
+# FIXME: are these values actually correct?
+LINKER_TEXT_BASE := 0xB0001000
+# The maximum size set aside for the linker, from
+# LINKER_TEXT_BASE rounded down to a megabyte.
+LINKER_AREA_SIZE := 0x01000000
+endif
+
+ifeq ($(TARGET_ARCH),sh)
+# SH-4A series virtual address range from 0x00000000 to 0x7FFFFFFF.
+LINKER_TEXT_BASE := 0x70000100
+# The maximum size set aside for the linker, from
+# LINKER_TEXT_BASE rounded down to a megabyte.
+LINKER_AREA_SIZE := 0x01000000
+endif
+
+ifeq ($(TARGET_ARCH),mips)
+# MIPS virtual address range from 0x00000000 to 0x7FFFFFFF.
+LINKER_TEXT_BASE := 0x7F000100
+# The maximum size set aside for the linker, from
+# LINKER_TEXT_BASE rounded down to a megabyte.
+LINKER_AREA_SIZE := 0x00100000
+endif
+
+ifeq ($(LINKER_TEXT_BASE),)
+  $(error LINKER_TEXT_BASE not defined: Unsupported TARGET_ARCH $(TARGET_ARCH))
+endif
 
 LOCAL_LDFLAGS := -Wl,-Ttext,$(LINKER_TEXT_BASE)
 
@@ -45,17 +69,17 @@ endif
 LOCAL_CFLAGS += -I$(LOCAL_PATH)/../libc/private
 
 ifeq ($(TARGET_ARCH),arm)
-LOCAL_CFLAGS += -DANDROID_ARM_LINKER
-else
-  ifeq ($(TARGET_ARCH),x86)
-    LOCAL_CFLAGS += -DANDROID_X86_LINKER
-  else
-    ifeq ($(TARGET_ARCH),sh)
-      LOCAL_CFLAGS += -DANDROID_SH_LINKER
-    else
-      $(error Unsupported TARGET_ARCH $(TARGET_ARCH))
-    endif
-  endif
+  LOCAL_CFLAGS += -DANDROID_ARM_LINKER
+endif
+ifeq ($(TARGET_ARCH),x86)
+  LOCAL_CFLAGS += -DANDROID_X86_LINKER
+endif
+ifeq ($(TARGET_ARCH),sh)
+  LOCAL_CFLAGS += -DANDROID_SH_LINKER
+endif
+ifeq ($(TARGET_ARCH),mips)
+  LOCAL_LDFLAGS += -Wl,--section-start,.rel.dyn=0x7eff0000
+  LOCAL_CFLAGS += -DANDROID_MIPS_LINKER
 endif
 
 LOCAL_MODULE:= linker
