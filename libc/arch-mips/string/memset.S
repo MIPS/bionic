@@ -66,10 +66,10 @@ LEAF(memset,0)
 
 	addu	t0,a0,a2		# t0 is the "past the end" address
 	slti	AT,a2,4			# is a2 less than 4?
-	bne	AT,zero,last4		# if yes, go to last4
+	bne	AT,zero,.Llast4		# if yes, go to last4
 	move	v0,a0			# memset returns the dst pointer
 
-	beq	a1,zero,set0
+	beq	a1,zero,.Lset0
 	subu	v1,zero,a0
 
 	# smear byte into 32 bit word
@@ -84,17 +84,17 @@ LEAF(memset,0)
 	or	a1,AT
 #endif
 
-set0:	andi	v1,v1,0x3		# word-unaligned address?
-	beq	v1,zero,aligned		# v1 is the unalignment count
+.Lset0:	andi	v1,v1,0x3		# word-unaligned address?
+	beq	v1,zero,.Laligned	# v1 is the unalignment count
 	subu	a2,a2,v1
 	SWHI	a1,0(a0)
 	addu	a0,a0,v1
 
 # Here we have the "word-aligned" a0 (until the "last4")
-aligned:
+.Laligned:
 	andi	t8,a2,0x3f	# any 64-byte chunks?
 				# t8 is the byte count past 64-byte chunks
-	beq	a2,t8,chk8w	# when a2==t8, no 64-byte chunks
+	beq	a2,t8,.Lchk8w	# when a2==t8, no 64-byte chunks
 				# There will be at most 1 32-byte chunk then
 	subu	a3,a2,t8	# subtract from a2 the reminder
 				# Here a3 counts bytes in 16w chunks
@@ -107,7 +107,7 @@ aligned:
 # For "a2" below 160 there will be no such "pref 30 safe" 64-byte chunk.
 #
 	sltiu	v1,a2,160
-	bgtz	v1,loop16w_nopref30	# skip "pref 30,0(a0)"
+	bgtz	v1,.Lloop16w_nopref30	# skip "pref 30,0(a0)"
 	subu	t7,a2,96	# subtract "pref 30 unsafe" region
 		# below we have at least 1 64-byte chunk which is "pref 30 safe"
 	andi	t6,t7,0x3f	# t6 is past "64-byte safe chunks" reminder
@@ -118,7 +118,7 @@ aligned:
 # Don't use "pref 30,0(a0)" for a0 in a "middle" of a cache line
 #	pref	30,0(a0)
 # Here we are in the region, where it is safe to use "pref 30,64(a0)"
-loop16w:
+.Lloop16w:
 	addiu	a0,a0,64
 	pref	30,-32(a0)	# continue setting up the dest, addr 64-32
 	sw	a1,-64(a0)
@@ -151,13 +151,13 @@ loop16w:
 	nop			# NOTE: adding 14 nop-s instead of 12 nop-s
 	nop			# gives better results for "fast" memory
 	nop
-	bne	a0,t4,loop16w
+	bne	a0,t4,.Lloop16w
 	nop
 
-	beq	a0,a3,chk8w	# maybe no more 64-byte chunks?
+	beq	a0,a3,.Lchk8w	# maybe no more 64-byte chunks?
 	nop			# this "delayed slot" is useless ...
 
-loop16w_nopref30:	# there could be up to 3 "64-byte nopref30" chunks
+.Lloop16w_nopref30:	# there could be up to 3 "64-byte nopref30" chunks
 	addiu	a0,a0,64
 	sw	a1,-64(a0)
 	sw	a1,-60(a0)
@@ -174,14 +174,14 @@ loop16w_nopref30:	# there could be up to 3 "64-byte nopref30" chunks
 	sw	a1,-16(a0)
 	sw	a1,-12(a0)
 	sw	a1,-8(a0)
-	bne	a0,a3,loop16w_nopref30
+	bne	a0,a3,.Lloop16w_nopref30
 	sw	a1,-4(a0)
 
-chk8w:		# t8 here is the byte count past 64-byte chunks
+.Lchk8w:		# t8 here is the byte count past 64-byte chunks
 
 	andi	t7,t8,0x1f	# is there a 32-byte chunk?
 				# the t7 is the reminder count past 32-bytes
-	beq	t8,t7,chk1w	# when t8==t7, no 32-byte chunk
+	beq	t8,t7,.Lchk1w	# when t8==t7, no 32-byte chunk
 	move	a2,t7
 
 	sw	a1,0(a0)
@@ -194,24 +194,25 @@ chk8w:		# t8 here is the byte count past 64-byte chunks
 	sw	a1,28(a0)
 	addiu	a0,a0,32
 
-chk1w:
+.Lchk1w:
 	andi	t8,a2,0x3	# now t8 is the reminder past 1w chunks
-	beq	a2,t8,last4
+	beq	a2,t8,.Llast4
 	subu	a3,a2,t8	# a3 is the count of bytes in 1w chunks
 	addu	a3,a0,a3	# now a3 is the dst address past the 1w chunks
 
 # copying in words (4-byte chunks)
-wordCopy_loop:
+.LwordCopy_loop:
 	addiu	a0,a0,4
-	bne	a0,a3,wordCopy_loop
+	bne	a0,a3,.LwordCopy_loop
 	sw	a1,-4(a0)
 
-last4:	beq	a0,t0,last4e
-last4l:	addiu	a0,a0,1
-	bne	a0,t0,last4l
+.Llast4:beq	a0,t0,.Llast4e
+.Llast4l:addiu	a0,a0,1
+	bne	a0,t0,.Llast4l
 	sb	a1,-1(a0)
 
-last4e:	j	ra
+.Llast4e:
+	j	ra
 	nop
 
 	.set	at
