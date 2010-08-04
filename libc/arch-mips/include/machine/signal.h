@@ -105,28 +105,31 @@ struct	sigcontext {
 #else /* __LANGUAGE_ASSEMBLY */
 
 #ifdef ANDROID_CHANGES
+
 #define	SC_REGMASK	(0*REGSZ)
 #define	SC_STATUS	(1*REGSZ)
 #define	SC_PC		(2*REGSZ)
-#define	SC_REGS		(3*REGSZ)
-#define	SC_FPREGS	(35*REGSZ)
-#define	SC_ACX		(67*REGSZ)
-#define	SC_FPC_CSR	(68*REGSZ)
-#define	SC_FPC_EIR	(69*REGSZ)
-#define	SC_USED_MATH	(70*REGSZ)
-#define	SC_DSP		(71*REGSZ)
-#define	SC_MDHI		(72*REGSZ)
-#define	SC_MDLO		(73*REGSZ)
-#define	SC_HI1		(74*REGSZ)
-#define	SC_LO1		(75*REGSZ)
-#define	SC_HI2		(76*REGSZ)
-#define	SC_LO2		(77*REGSZ)
-#define	SC_HI3		(78*REGSZ)
-#define	SC_LO3		(79*REGSZ)
+#define	SC_REGS		(SC_PC+8)
+#define	SC_FPREGS	(SC_REGS+32*8)
+#define	SC_ACX		(SC_FPREGS+32*REGSZ_FP)
+#define	SC_FPC_CSR	(SC_ACX+1*REGSZ)
+#define	SC_FPC_EIR	(SC_ACX+2*REGSZ)
+#define	SC_USED_MATH	(SC_ACX+3*REGSZ)
+#define	SC_DSP		(SC_ACX+4*REGSZ)
+#define	SC_MDHI		(SC_ACX+5*REGSZ)
+#define	SC_MDLO		(SC_MDHI+8)
+#define	SC_HI1		(SC_MDLO+8)
+#define	SC_LO1		(SC_HI1+1*REGSZ)
+#define	SC_HI2		(SC_HI1+2*REGSZ)
+#define	SC_LO2		(SC_HI1+3*REGSZ)
+#define	SC_HI3		(SC_HI1+4*REGSZ)
+#define	SC_LO3		(SC_HI1+5*REGSZ)
 /* OpenBSD compatibility */
 #define	SC_MASK		SC_REGMASK
 #define	SC_FPUSED	SC_USED_MATH
+
 #else
+
 #define SC_ONSTACK	(0 * REGSZ)
 #define	SC_MASK		(1 * REGSZ)
 #define	SC_PC		(2 * REGSZ)
@@ -136,7 +139,9 @@ struct	sigcontext {
 #define	SC_FPREGS	(37 * REGSZ)
 #define	SC_FPUSED	(70 * REGSZ)
 #define	SC_FPC_EIR	(71 * REGSZ)
-#endif
+
+#endif /*ANDROID CHANGES*/
+
 #endif /* __LANGUAGE_ASSEMBLY */
 
 #endif	/* !_MIPS_SIGNAL_H_ */

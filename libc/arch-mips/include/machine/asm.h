@@ -161,6 +161,8 @@
 #define	CF_RA_OFFS	40	/* Call ra save offset */
 #endif
 
+#define REGSZ_FP	 8	/* 64 bit FP register size */
+
 #ifndef __LP64__
 #define	PTR_L		lw
 #define	PTR_S		sw
