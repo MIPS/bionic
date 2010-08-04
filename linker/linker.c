@@ -442,9 +442,9 @@ static Elf32_Sym *_elf_lookup(soinfo *si, unsigned hash, const char *name)
             /* only concern ourselves with global and weak symbol definitions */
         switch(ELF32_ST_BIND(s->st_info)){
         case STB_GLOBAL:
-        case STB_WEAK:
                 /* no section == undefined */
             if(s->st_shndx == 0) continue;
+        case STB_WEAK:
 
             TRACE_TYPE(LOOKUP, "%5d FOUND %s in %s (%08x) %d\n", pid,
                        name, si->name, s->st_value, s->st_size);
