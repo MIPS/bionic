@@ -480,7 +480,6 @@ ifeq ($(TARGET_ARCH),mips)
   ifneq ($(ARCH_MIPS_HAS_FPU),true)
     libc_common_cflags += -DSOFTFLOAT
   endif
-  libc_common_cflags += $(TARGET_GLOBAL_CFLAGS)
   libc_crt_target_cflags := $(TARGET_GLOBAL_CFLAGS)
 endif # mips
 
