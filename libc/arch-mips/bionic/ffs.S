@@ -46,7 +46,7 @@
 	.align	4
 	.set noreorder
 ffs:
-#if (__mips==32) && (__mips_isa_rev>=2)
+#if (__mips==32)
 	subu	$t0,$0,$a0
 	and	$a0,$t0
 	clz	$t0,$a0
