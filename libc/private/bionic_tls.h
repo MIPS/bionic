@@ -101,6 +101,15 @@ extern int __set_tls(void *ptr);
 #  else /* !HAVE_ARM_TLS_REGISTER */
 #    define __get_tls() ( *((volatile void **) 0xffff0ff0) )
 #  endif
+#elif defined(__mips__)
+#    define __get_tls() \
+	({ register unsigned int __val;		\
+		asm (".set push\n\t"		\
+		     ".set mips32r2\n\t"	\
+		     "rdhwr  %0,$29\n\t"	\
+		     : "=r"(__val)		\
+			);			\
+		(volatile void*)__val; })
 #else
 extern void*  __get_tls( void );
 #endif
