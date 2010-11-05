@@ -56,12 +56,12 @@ sincosf(float x, float *sinp, float *cosp)
 	    }
 	    else {
 		if(hx>0) {
-		    *sinp = -__kernel_cosdf(x - sc3pio2);
+		    *sinp =  __kernel_cosdf(x - sc1pio2);
 		    *cosp =  __kernel_sindf(sc1pio2 - x);
 		    return;
 		}
 		else {
-		    *sinp = __kernel_cosdf(x + sc3pio2);
+		    *sinp = -__kernel_cosdf(x + sc1pio2);
 		    *cosp = __kernel_sindf(x + sc1pio2);
 		    return;
 		}
