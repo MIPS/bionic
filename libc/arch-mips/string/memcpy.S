@@ -73,18 +73,18 @@ LEAF(memcpy,0)
 
 	slti	AT,a2,8
 	bne	AT,zero,.Llast8
-	move	v0,a0	# memcpy returns the dst pointer
+	 move	v0,a0	# memcpy returns the dst pointer
 
 # Test if the src and dst are word-aligned, or can be made word-aligned
 	xor	t8,a1,a0
 	andi	t8,t8,0x3		# t8 is a0/a1 word-displacement
 
 	bne	t8,zero,.Lunaligned
-	negu	a3,a0
+	 negu	a3,a0
 
 	andi	a3,a3,0x3	# we need to copy a3 bytes to make a0/a1 aligned
 	beq	a3,zero,.Lchk16w # when a3=0 then the dst (a0) is word-aligned
-	subu	a2,a2,a3	# now a2 is the remining bytes count
+	 subu	a2,a2,a3	# now a2 is the remining bytes count
 
 	LWHI	t8,0(a1)
 	addu	a1,a1,a3
@@ -98,7 +98,7 @@ LEAF(memcpy,0)
 
 	beq	a2,t8,.Lchk8w	# if a2==t8, no 64-byte chunks
 				# There will be at most 1 32-byte chunk after it
-	subu	a3,a2,t8	# subtract from a2 the reminder
+	 subu	a3,a2,t8	# subtract from a2 the reminder
                                 # Here a3 counts bytes in 16w chunks
 	addu	a3,a0,a3	# Now a3 is the final dst after 64-byte chunks
 
@@ -118,14 +118,14 @@ LEAF(memcpy,0)
 # In case the a0 > t9 don't use "pref 30" at all
 	sgtu	v1,a0,t9
 	bgtz	v1,.Lloop16w	# skip "pref 30,64(a0)" for too short arrays
-	nop
+	 nop
 # otherwise, start with using pref30
 	pref	30,64(a0)
 .Lloop16w:
 	pref	0,96(a1)
 	lw	t0,0(a1)
 	bgtz	v1,.Lskip_pref30_96	# skip "pref 30,96(a0)"
-	lw	t1,4(a1)
+	 lw	t1,4(a1)
 	pref    30,96(a0)   # continue setting up the dest, addr 96
 .Lskip_pref30_96:
 	lw	t2,8(a1)
@@ -147,7 +147,7 @@ LEAF(memcpy,0)
 
 	lw	t0,32(a1)
 	bgtz	v1,.Lskip_pref30_128	# skip "pref 30,128(a0)"
-	lw	t1,36(a1)
+	 lw	t1,36(a1)
 	pref    30,128(a0)   # continue setting up the dest, addr 128
 .Lskip_pref30_128:
 	lw	t2,40(a1)
@@ -170,7 +170,7 @@ LEAF(memcpy,0)
 	addiu	a0,a0,64	# adding 64 to dest
 	sgtu	v1,a0,t9
 	bne	a0,a3,.Lloop16w
-	addiu	a1,a1,64	# adding 64 to src
+	 addiu	a1,a1,64	# adding 64 to src
 	move	a2,t8
 
 # Here we have src and dest word-aligned but less than 64-bytes to go
@@ -205,7 +205,7 @@ LEAF(memcpy,0)
 .Lchk1w:
 	andi	a2,t8,0x3	# now a2 is the reminder past 1w chunks
 	beq	a2,t8,.Llast8
-	subu	a3,t8,a2	# a3 is count of bytes in 1w chunks
+	 subu	a3,t8,a2	# a3 is count of bytes in 1w chunks
 	addu	a3,a0,a3	# now a3 is the dst address past the 1w chunks
 
 # copying in words (4-byte chunks)
@@ -214,22 +214,22 @@ LEAF(memcpy,0)
 	addiu	a1,a1,4
 	addiu	a0,a0,4
 	bne	a0,a3,.LwordCopy_loop
-	sw	t3,-4(a0)
+	 sw	t3,-4(a0)
 
 # For the last (<8) bytes
 .Llast8:
 	blez	a2,.Lleave
-	addu	a3,a0,a2	# a3 is the last dst address
+	 addu	a3,a0,a2	# a3 is the last dst address
 .Llast8loop:
 	lb	v1,0(a1)
 	addiu	a1,a1,1
 	addiu	a0,a0,1
 	bne	a0,a3,.Llast8loop
-	sb	v1,-1(a0)
+	 sb	v1,-1(a0)
 
 .Lleave:
 	j	ra
-	nop
+	 nop
 
 #
 # UNALIGNED case
@@ -239,7 +239,7 @@ LEAF(memcpy,0)
 	# got here with a3="negu a0"
 	andi	a3,a3,0x3	# test if the a0 is word aligned
 	beqz	a3,.Lua_chk16w
-	subu	a2,a2,a3	# bytes left after initial a3 bytes
+	 subu	a2,a2,a3	# bytes left after initial a3 bytes
 
 	LWHI	v1,0(a1)
 	LWLO	v1,3(a1)
@@ -252,7 +252,7 @@ LEAF(memcpy,0)
 				# t8 is the byte count after 64-byte chunks
 	beq	a2,t8,.Lua_chk8w # if a2==t8, no 64-byte chunks
 				# There will be at most 1 32-byte chunk after it
-	subu	a3,a2,t8	# subtract from a2 the reminder
+	 subu	a3,a2,t8	# subtract from a2 the reminder
                                 # Here a3 counts bytes in 16w chunks
 	addu	a3,a0,a3	# Now a3 is the final dst after 64-byte chunks
 
@@ -267,7 +267,7 @@ LEAF(memcpy,0)
 # In case the a0 > t9 don't use "pref 30" at all
 	sgtu	v1,a0,t9
 	bgtz	v1,.Lua_loop16w	# skip "pref 30,64(a0)" for too short arrays
-	nop
+	 nop
 # otherwise, start with using pref30
 	pref	30,64(a0)
 .Lua_loop16w:
@@ -276,7 +276,7 @@ LEAF(memcpy,0)
 	LWLO	t0,3(a1)
 	LWHI	t1,4(a1)
 	bgtz	v1,.Lua_skip_pref30_96
-	LWLO	t1,7(a1)
+	 LWLO	t1,7(a1)
 	pref    30,96(a0)   # continue setting up the dest, addr 96
 .Lua_skip_pref30_96:
 	LWHI	t2,8(a1)
@@ -335,7 +335,7 @@ LEAF(memcpy,0)
 	addiu	a0,a0,64	# adding 64 to dest
 	sgtu	v1,a0,t9
 	bne	a0,a3,.Lua_loop16w
-	addiu	a1,a1,64	# adding 64 to src
+	 addiu	a1,a1,64	# adding 64 to src
 	move	a2,t8
 
 # Here we have src and dest word-aligned but less than 64-bytes to go
@@ -345,6 +345,7 @@ LEAF(memcpy,0)
 	andi	t8,a2,0x1f	# is there a 32-byte chunk?
 				# the t8 is the reminder count
 	beq	a2,t8,.Lua_chk1w # when a2=t8, no 32-byte chunk
+	 nop
 
 	LWHI	t0,0(a1)
 	LWLO	t0,3(a1)
@@ -377,7 +378,7 @@ LEAF(memcpy,0)
 .Lua_chk1w:
 	andi	a2,t8,0x3	# now a2 is the reminder past 1w chunks
 	beq	a2,t8,.Lua_smallCopy
-	subu	a3,t8,a2	# a3 is count of bytes in 1w chunks
+	 subu	a3,t8,a2	# a3 is count of bytes in 1w chunks
 	addu	a3,a0,a3	# now a3 is the dst address past the 1w chunks
 
 # copying in words (4-byte chunks)
@@ -387,7 +388,7 @@ LEAF(memcpy,0)
 	addiu	a1,a1,4
 	addiu	a0,a0,4		# note: dst=a0 is word aligned here, see NOTE1
 	bne	a0,a3,.Lua_wordCopy_loop
-	sw	v1,-4(a0)
+	 sw	v1,-4(a0)
 
 # Now less than 4 bytes (value in a2) left to copy
 .Lua_smallCopy:
@@ -398,10 +399,10 @@ LEAF(memcpy,0)
 	addiu	a1,a1,1
 	addiu	a0,a0,1
 	bne	a0,a3,.Lua_smallCopy_loop
-	sb	v1,-1(a0)
+	 sb	v1,-1(a0)
 
 	j	ra
-	nop
+	 nop
 
 	.set	at
 	.set	reorder
