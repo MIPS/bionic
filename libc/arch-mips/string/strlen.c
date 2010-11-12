@@ -57,6 +57,7 @@ size_t strlen(const char *s)
     // loop for each word, testing if it contains a zero byte
     // if so, exit the loop and update the length.
     asm(
+       ".set	push\n"
        ".set	noreorder\n"
 "	subu	%[l],%[s]\n"
 "0:\n"
@@ -110,7 +111,8 @@ size_t strlen(const char *s)
 "	beqz	%[t],2f\n"
 "	 nop\n"
 "	addu	%[l],1\n"
-"2:"
+"2:\n"
+       ".set	pop\n"
        : [l]"=&r"(l), [v]"=&r"(v), [t]"=&r"(t), [s]"=&r"(u.b)
        : "%[l]"(l), "%[s]"(u.b), [maskhi]"r"(0x80808080UL), [masklo]"r"(0x01010101UL)
     );
