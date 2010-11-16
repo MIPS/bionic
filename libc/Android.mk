@@ -356,7 +356,7 @@ libc_common_src_files += \
 libc_common_src_files += \
 	arch-mips/string/memset.S \
 	arch-mips/string/memcpy.S \
-	arch-mips/string/strlen.c
+	arch-mips/string/mips_strlen.c
 
 libc_common_src_files += \
 	string/memmove.c \
