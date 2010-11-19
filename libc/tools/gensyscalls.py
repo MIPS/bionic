@@ -35,6 +35,7 @@ bionic_temp = "/tmp/bionic_gensyscalls/"
 all_archs = [ "arm", "x86", "sh", "mips" ]
 
 def make_dir( path ):
+    path = os.path.abspath(path)
     if not os.path.exists(path):
         parent = os.path.dirname(path)
         if parent:
