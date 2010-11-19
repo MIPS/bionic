@@ -90,7 +90,6 @@ int     setpgid(pid_t, pid_t)  57
 pid_t   vfork(void)  190,-1,190,-1
 int     setregid:setregid32(gid_t, gid_t)  204,204,204,-1
 int     setregid:setregid(gid_t, gid_t)    -1,-1,-1,71
-
 int     chroot(const char *)  61
 int     prctl(int option, unsigned int arg2, unsigned int arg3, unsigned int arg4, unsigned int arg5)  172,172,172,192
 int     capget(cap_user_header_t header, cap_user_data_t data) 184,184,184,204
@@ -235,7 +234,7 @@ int           sendmsg:socketcall:16(int, const struct msghdr *, unsigned int)  -
 int           recvmsg:socketcall:17(int, struct msghdr *, unsigned int)   -1,102,-1,-1
 
 # sockets for sh.
-int           __socketcall:socketcall(int, unsigned long*) -1,-1,102,-1
+int           __socketcall:__socketcall(int, unsigned long*) -1,-1,102,-1
 
 # scheduler & real-time
 int sched_setscheduler(pid_t pid, int policy, const struct sched_param *param)  156,156,156,160
@@ -248,8 +247,8 @@ int sched_get_priority_min(int policy)  160,160,160,164
 int sched_rr_get_interval(pid_t pid, struct timespec *interval)  161,161,161,165
 
 # io priorities
-int ioprio_set(int which, int who, int ioprio) 314,289,288,314
-int ioprio_get(int which, int who) 315,290,289,315
+int ioprio_set(int which, int who, int ioprio) 314,289,289,314
+int ioprio_get(int which, int who) 315,290,290,315
 
 # other
 int     uname(struct utsname *)  122
