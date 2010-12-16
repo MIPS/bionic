@@ -1757,7 +1757,7 @@ int mips_relocate_got(struct soinfo *si)
      */
     if ((si->flags & (FLAG_PRELINKED|FLAG_EXE)) == 0) {
 	for (; g < local_gotno; g++) 
-	    *got++ += si->base;
+	    got[g] += si->base;
     }
 
     /* Now for the global GOT entries */
