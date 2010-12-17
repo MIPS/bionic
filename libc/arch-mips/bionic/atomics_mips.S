@@ -132,7 +132,13 @@ __futex_wait:
 #	move	$a0,$a0		/* ftx */
 	li	$v0,__NR_futex
 	syscall
-	addu	$sp,4*6		/* Ignore return result */
+	.set noreorder
+	bnez	$a3, 1f		/* Check for error */
+         neg	$v0		/* Negate error number if it's valid */
+	move	$v0,$0		/* Otherwise return 0 */
+1:
+	.set reorder
+	addu	$sp,4*6
 	j	$ra
 	.end	__futex_wait
 
@@ -154,7 +160,13 @@ __futex_wake:
 #	move	$a0,$a0		/* ftx */
 	li	$v0,__NR_futex
 	syscall
-	addu	$sp,4*6		/* Ignore return result */
+	.set noreorder
+	bnez	$a3, 1f		/* Check for error */
+         neg	$v0		/* Negate error number if it's valid */
+	move	$v0,$0		/* Otherwise return 0 */
+1:
+	.set reorder
+	addu	$sp,4*6
 	j	$ra
 	.end	__futex_wake
 
@@ -175,7 +187,13 @@ __futex_syscall3:
 #	move	$a0,$a0		/* ftx */
 	li	$v0,__NR_futex
 	syscall
-	addu	$sp,4*6		/* Ignore return result */
+	.set noreorder
+	bnez	$a3, 1f		/* Check for error */
+         neg	$v0		/* Negate error number if it's valid */
+	move	$v0,$0		/* Otherwise return 0 */
+1:
+	.set reorder
+	addu	$sp,4*6
 	j	$ra
 	.end	__futex_syscall3
 
@@ -196,6 +214,12 @@ __futex_syscall4:
 #	move	$a0,$a0		/* ftx */
 	li	$v0,__NR_futex
 	syscall
-	addu	$sp,4*6		/* Ignore return result */
+	.set noreorder
+	bnez	$a3, 1f		/* Check for error */
+         neg	$v0		/* Negate error number if it's valid */
+	move	$v0,$0		/* Otherwise return 0 */
+1:
+	.set reorder
+	addu	$sp,4*6
 	j	$ra
 	.end	__futex_syscall4
