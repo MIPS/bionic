@@ -60,20 +60,28 @@
 #  define SWLO	swl		/* low part is left in big-endian	*/
 #endif
 
-
-#if !(defined(XGPROF) || defined(XPROF))
-#undef SETUP_GP
-#define SETUP_GP
-#endif
-
 LEAF(memcpy,0)
 
 	.set	noreorder
 	.set	noat
-
+/*
+ * Below we handle the case where memcpy is called with overlapping src and dst.
+ * Although memcpy is not required to handle this case, some parts of Android like Skia
+ * rely on such usage. We call memmove to handle such cases.
+ */
+	subu	t0,a0,a1
+	sra	AT,t0,31
+	xor	t1,t0,AT
+	subu	t0,t1,AT
+	sltu	AT,t0,a2
+	beq	AT,zero,.Lmemcpy
+	la	t9,memmove
+	jr	t9
+	nop
+.Lmemcpy:
 	slti	AT,a2,8
 	bne	AT,zero,.Llast8
-	 move	v0,a0	# memcpy returns the dst pointer
+	move	v0,a0	# memcpy returns the dst pointer
 
 # Test if the src and dst are word-aligned, or can be made word-aligned
 	xor	t8,a1,a0
