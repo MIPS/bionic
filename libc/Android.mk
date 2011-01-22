@@ -496,23 +496,6 @@ libc_common_c_includes := \
 # executables)
 # ==========================================================================
 
-ifeq ($(TARGET_ARCH),mips)
-# we only need begin_so/end_so for mips, since it needs an appropriate .init
-# section in the shared library with a function to call all the entries in
-# .ctors section.
-GEN := $(TARGET_OUT_STATIC_LIBRARIES)/crtbegin_so.o
-$(GEN): $(LOCAL_PATH)/arch-$(TARGET_ARCH)/bionic/crtbegin_so.S
-	@mkdir -p $(dir $@)
-	$(TARGET_CC) $(libc_crt_target_cflags) -o $@ -c $<
-ALL_GENERATED_SOURCES += $(GEN)
-
-GEN := $(TARGET_OUT_STATIC_LIBRARIES)/crtend_so.o
-$(GEN): $(LOCAL_PATH)/arch-$(TARGET_ARCH)/bionic/crtend_so.S
-	@mkdir -p $(dir $@)
-	$(TARGET_CC) $(libc_crt_target_cflags) -o $@ -c $<
-ALL_GENERATED_SOURCES += $(GEN)
-endif # TARGET_ARCH == mips
-
 ifeq ($(TARGET_ARCH),x86)
 # we only need begin_so/end_so for x86, since it needs an appropriate .init
 # section in the shared library with a function to call all the entries in
