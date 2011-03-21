@@ -76,8 +76,6 @@
  * - cleaner error reporting
  * - after linking, set as much stuff as possible to READONLY
  *   and NOEXEC
- * - linker hardcodes PAGE_SIZE and PAGE_MASK because the kernel
- *   headers provide versions that are negative...
  * - allocate space for soinfo structs dynamically instead of
  *   having a hard limit (64)
 */
@@ -131,8 +129,43 @@ struct _link_stats linker_stats;
 unsigned bitmask[4096];
 #endif
 
+#ifdef ANDROID_ARM_LINKER
 #ifndef PT_ARM_EXIDX
 #define PT_ARM_EXIDX    0x70000001      /* .ARM.exidx segment */
+#endif
+#endif
+
+#ifdef ANDROID_MIPS_LINKER
+#ifndef DT_MIPS_RLD_VERSION
+#define DT_MIPS_RLD_VERSION	0x70000001
+#endif
+#ifndef DT_MIPS_FLAGS
+#define DT_MIPS_FLAGS		0x70000005
+#endif
+#ifndef DT_MIPS_BASE_ADDRESS
+#define DT_MIPS_BASE_ADDRESS	0x70000006
+#endif
+#ifndef DT_MIPS_LOCAL_GOTNO
+#define DT_MIPS_LOCAL_GOTNO	0x7000000a
+#endif
+#ifndef DT_MIPS_SYMTABNO
+#define DT_MIPS_SYMTABNO	0x70000011
+#endif
+#ifndef DT_MIPS_UNREFEXTNO
+#define DT_MIPS_UNREFEXTNO	0x70000012
+#endif
+#ifndef DT_MIPS_GOTSYM
+#define DT_MIPS_GOTSYM		0x70000013
+#endif
+#ifndef DT_MIPS_RLD_MAP
+#define DT_MIPS_RLD_MAP		0x70000016
+#endif
+#ifndef DT_MIPS_PLTGOT
+#define DT_MIPS_PLTGOT		0x70000032
+#endif
+#ifndef DT_MIPS_RWPLT
+#define DT_MIPS_RWPLT		0x70000034
+#endif
 #endif
 
 #define HOODLUM(name, ret, ...)                                               \
@@ -375,7 +408,7 @@ _Unwind_Ptr dl_unwind_find_exidx(_Unwind_Ptr pc, int *pcount)
    *pcount = 0;
     return NULL;
 }
-#elif defined(ANDROID_X86_LINKER) || defined(ANDROID_SH_LINKER)
+#elif defined(ANDROID_X86_LINKER) || defined(ANDROID_SH_LINKER) || defined(ANDROID_MIPS_LINKER)
 /* Here, we only have to provide a callback to iterate across all the
  * loaded libraries. gcc_eh does the rest. */
 int
@@ -417,9 +450,9 @@ static Elf32_Sym *_elf_lookup(soinfo *si, unsigned hash, const char *name)
             /* only concern ourselves with global and weak symbol definitions */
         switch(ELF32_ST_BIND(s->st_info)){
         case STB_GLOBAL:
-        case STB_WEAK:
                 /* no section == undefined */
             if(s->st_shndx == 0) continue;
+        case STB_WEAK:
 
             TRACE_TYPE(LOOKUP, "%5d FOUND %s in %s (%08x) %d\n", pid,
                        name, si->name, s->st_value, s->st_size);
@@ -452,6 +485,11 @@ _do_lookup(soinfo *si, const char *name, unsigned *base)
     unsigned *d;
     soinfo *lsi = si;
     int i;
+#ifdef ANDROID_MIPS_LINKER
+    Elf32_Sym *ws;
+    unsigned wref = 0;
+    soinfo *si_weak = NULL;
+#endif
 
     /* Look for symbols in the local scope first (the object who is
      * searching). This happens with C++ templates on i386 for some
@@ -461,10 +499,27 @@ _do_lookup(soinfo *si, const char *name, unsigned *base)
      * The ELF specs are ambigious about treatment of weak definitions in
      * dynamic linking.  Some systems return the first definition found
      * and some the first non-weak definition.   This is system dependent.
-     * Here we return the first definition found for simplicity.  */
+     * Here we return the first definition found for simplicity except on MIPS
+     * where the first nonweak definition is needed */
     s = _elf_lookup(si, elf_hash, name);
+#ifndef ANDROID_MIPS_LINKER
     if(s != NULL)
         goto done;
+#else
+    if (s != NULL) {
+        if (ELF32_ST_BIND(s->st_info) != STB_WEAK) {
+            goto done;
+        } else {
+            si_weak = lsi;
+            ws = s;
+	    if (s->st_shndx != 0) 
+                wref = 1;
+            else
+            /* We have not yet found a reference to the weak symbol*/
+                wref = 0;
+        }
+    }
+#endif
 
     /* Next, look for it in the preloads list */
     for(i = 0; preloads[i] != NULL; i++) {
@@ -476,7 +531,11 @@ _do_lookup(soinfo *si, const char *name, unsigned *base)
 
     for(d = si->dynamic; *d; d += 2) {
         if(d[0] == DT_NEEDED){
+#ifdef ANDROID_MIPS_LINKER
+            lsi = find_library(si->strtab + d[1]);
+#else
             lsi = (soinfo *)d[1];
+#endif
             if (!validate_soinfo(lsi)) {
                 DL_ERR("%5d bad DT_NEEDED pointer in %s",
                        pid, si->name);
@@ -486,8 +545,32 @@ _do_lookup(soinfo *si, const char *name, unsigned *base)
             DEBUG("%5d %s: looking up %s in %s\n",
                   pid, si->name, name, lsi->name);
             s = _elf_lookup(lsi, elf_hash, name);
+#ifndef ANDROID_MIPS_LINKER
             if ((s != NULL) && (s->st_shndx != SHN_UNDEF))
                 goto done;
+#else
+            if(s != NULL) {
+                if (ELF32_ST_BIND(s->st_info) != STB_WEAK) {
+                    goto done;
+                } else {   
+                    if ((wref == 0) && (s->st_shndx != 0)) {
+                        si_weak = lsi;
+                        ws = s;
+                        wref = 1;
+                        goto done;
+                    } else if ((wref == 0) && (s->st_shndx == 0)) {
+                        /* We need to remember the weak references although they
+                         * are not defined. Their got entries are set to zero.
+                         */
+			if (!si_weak) {
+                            si_weak = lsi;
+                            ws = s;
+                        }
+                    }
+                    s = NULL;
+                }
+            }
+#endif
         }
     }
 
@@ -501,6 +584,10 @@ _do_lookup(soinfo *si, const char *name, unsigned *base)
         DEBUG("%5d %s: looking up %s in executable %s\n",
               pid, si->name, name, lsi->name);
         s = _elf_lookup(lsi, elf_hash, name);
+#ifdef ANDROID_MIPS_LINKER
+        if (s && (ELF32_ST_BIND(s->st_info) == STB_WEAK) && wref)
+            s = NULL;
+#endif
     }
 #endif
 
@@ -512,6 +599,12 @@ done:
         *base = lsi->base;
         return s;
     }
+#ifdef ANDROID_MIPS_LINKER
+    if (si_weak) {
+      *base = si_weak->base;
+      return ws;
+    }
+#endif
 
     return NULL;
 }
@@ -789,10 +882,10 @@ get_lib_extents(int fd, const char *name, void *__hdr, unsigned *total_sz)
     }
 
     /* truncate min_vaddr down to page boundary */
-    min_vaddr &= ~PAGE_MASK;
+    min_vaddr &= PAGE_MASK;
 
     /* round max_vaddr up to the next page */
-    max_vaddr = (max_vaddr + PAGE_SIZE - 1) & ~PAGE_MASK;
+    max_vaddr = (max_vaddr + PAGE_SIZE - 1) & PAGE_MASK;
 
     *total_sz = (max_vaddr - min_vaddr);
     return (unsigned)req_base;
@@ -818,7 +911,7 @@ get_lib_extents(int fd, const char *name, void *__hdr, unsigned *total_sz)
 static int reserve_mem_region(soinfo *si)
 {
     void *base = mmap((void *)si->base, si->size, PROT_READ | PROT_EXEC,
-                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+                      MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (base == MAP_FAILED) {
         DL_ERR("%5d can NOT map (%sprelinked) library '%s' at 0x%08x "
               "as requested, will try general pool: %d (%s)",
@@ -912,16 +1005,16 @@ load_segments(int fd, void *header, soinfo *si)
         if (phdr->p_type == PT_LOAD) {
             DEBUG_DUMP_PHDR(phdr, "PT_LOAD", pid);
             /* we want to map in the segment on a page boundary */
-            tmp = base + (phdr->p_vaddr & (~PAGE_MASK));
+            tmp = base + (phdr->p_vaddr & PAGE_MASK);
             /* add the # of bytes we masked off above to the total length. */
-            len = phdr->p_filesz + (phdr->p_vaddr & PAGE_MASK);
+            len = phdr->p_filesz + (phdr->p_vaddr & ~PAGE_MASK);
 
             TRACE("[ %d - Trying to load segment from '%s' @ 0x%08x "
                   "(0x%08x). p_vaddr=0x%08x p_offset=0x%08x ]\n", pid, si->name,
                   (unsigned)tmp, len, phdr->p_vaddr, phdr->p_offset);
             pbase = mmap(tmp, len, PFLAGS_TO_PROT(phdr->p_flags),
                          MAP_PRIVATE | MAP_FIXED, fd,
-                         phdr->p_offset & (~PAGE_MASK));
+                         phdr->p_offset & PAGE_MASK);
             if (pbase == MAP_FAILED) {
                 DL_ERR("%d failed to map segment from '%s' @ 0x%08x (0x%08x). "
                       "p_vaddr=0x%08x p_offset=0x%08x", pid, si->name,
@@ -931,8 +1024,8 @@ load_segments(int fd, void *header, soinfo *si)
 
             /* If 'len' didn't end on page boundary, and it's a writable
              * segment, zero-fill the rest. */
-            if ((len & PAGE_MASK) && (phdr->p_flags & PF_W))
-                memset((void *)(pbase + len), 0, PAGE_SIZE - (len & PAGE_MASK));
+            if ((len & ~PAGE_MASK) && (phdr->p_flags & PF_W))
+                memset((void *)(pbase + len), 0, PAGE_SIZE - (len & ~PAGE_MASK));
 
             /* Check to see if we need to extend the map for this segment to
              * cover the diff between filesz and memsz (i.e. for bss).
@@ -962,7 +1055,7 @@ load_segments(int fd, void *header, soinfo *si)
              *                 _+---------------------+  page boundary
              */
             tmp = (unsigned char *)(((unsigned)pbase + len + PAGE_SIZE - 1) &
-                                    (~PAGE_MASK));
+                                    PAGE_MASK);
             if (tmp < (base + phdr->p_vaddr + phdr->p_memsz)) {
                 extra_len = base + phdr->p_vaddr + phdr->p_memsz - tmp;
                 TRACE("[ %5d - Need to extend segment from '%s' @ 0x%08x "
@@ -994,7 +1087,7 @@ load_segments(int fd, void *header, soinfo *si)
             /* set the len here to show the full extent of the segment we
              * just loaded, mostly for debugging */
             len = (((unsigned)base + phdr->p_vaddr + phdr->p_memsz +
-                    PAGE_SIZE - 1) & (~PAGE_MASK)) - (unsigned)pbase;
+                    PAGE_SIZE - 1) & PAGE_MASK) - (unsigned)pbase;
             TRACE("[ %5d - Successfully loaded segment from '%s' @ 0x%08x "
                   "(0x%08x). p_vaddr=0x%08x p_offset=0x%08x\n", pid, si->name,
                   (unsigned)pbase, len, phdr->p_vaddr, phdr->p_offset);
@@ -1070,7 +1163,7 @@ get_wr_offset(int fd, const char *name, Elf32_Ehdr *ehdr)
     unsigned wr_offset = 0xffffffff;
 
     shdr_start = mmap(0, shdr_sz, PROT_READ, MAP_PRIVATE, fd,
-                      ehdr->e_shoff & (~PAGE_MASK));
+                      ehdr->e_shoff & PAGE_MASK);
     if (shdr_start == MAP_FAILED) {
         WARN("%5d - Could not read section header info from '%s'. Will not "
              "not be able to determine write-protect offset.\n", pid, name);
@@ -1088,6 +1181,59 @@ get_wr_offset(int fd, const char *name, Elf32_Ehdr *ehdr)
     return wr_offset;
 }
 #endif
+
+void
+get_ctors_dtors(int fd, soinfo *si, Elf32_Ehdr *ehdr)
+{
+    Elf32_Shdr *shdr, *strhdr;
+    const char *shstrtab;
+    void *shdr_pages, *shstrtab_pages;
+    int shdr_offs, shdr_sz;
+    int shstrtab_offs, shstrtab_sz;
+    int cnt;
+
+#define PAGE_UP(x) (((x)+PAGE_SIZE-1) & PAGE_MASK)
+#define PAGE_DOWN(x) ((x) & PAGE_MASK)
+#define PAGE_OFF(x) ((x) & ~PAGE_MASK)
+    shdr_offs = PAGE_DOWN(ehdr->e_shoff);
+    shdr_sz = PAGE_UP(ehdr->e_shoff + ehdr->e_shnum*sizeof(Elf32_Shdr)) - shdr_offs;
+    shdr_pages = mmap(0, shdr_sz, PROT_READ, MAP_PRIVATE, fd, shdr_offs);
+    if (shdr_pages == MAP_FAILED) {
+        WARN("%5d - Could not read section header info from '%s'. Will not "
+             "be able to run constructors/destructors.\n", pid, si->name);
+        return;
+    }
+    shdr = (Elf32_Shdr *)((char *)shdr_pages + PAGE_OFF(ehdr->e_shoff));
+
+    strhdr = &shdr[ehdr->e_shstrndx];
+    shstrtab_offs = PAGE_DOWN(strhdr->sh_offset);
+    shstrtab_sz = PAGE_UP(strhdr->sh_offset + strhdr->sh_size) - shstrtab_offs;
+    shstrtab_pages = mmap(0, shstrtab_sz, PROT_READ, MAP_PRIVATE, fd, shstrtab_offs);
+    if (shstrtab_pages == MAP_FAILED) {
+        WARN("%5d - Could not read section header strings from '%s'. Will not "
+             "be able to run constructors/destructors.\n", pid, si->name);
+	
+	munmap(shdr_pages, shdr_sz);
+        return;
+    }
+    shstrtab = (char *)shstrtab_pages + PAGE_OFF(strhdr->sh_offset);
+
+    for(cnt = 0; cnt < ehdr->e_shnum; ++cnt, ++shdr) {
+	const char *name = shstrtab + shdr->sh_name;
+	if (strcmp(name, ".ctors") == 0) {
+	    si->ctors = (unsigned *)(si->base + shdr->sh_offset);
+	    si->ctors_count = shdr->sh_size/sizeof(Elf32_Word);
+	}
+	if (strcmp(name, ".dtors") == 0) {
+	    si->dtors = (unsigned *)(si->base + shdr->sh_offset);
+	    si->dtors_count = shdr->sh_size/sizeof(Elf32_Word);
+	}
+    }
+
+    munmap(shdr_pages, shdr_sz);
+    munmap(shstrtab_pages, shstrtab_sz);
+}
+
 
 static soinfo *
 load_library(const char *name)
@@ -1163,6 +1309,9 @@ load_library(const char *name)
     si->phdr = (Elf32_Phdr *)((unsigned char *)si->base + hdr->e_phoff);
     si->phnum = hdr->e_phnum;
     /**/
+
+    /* Look for constructor/destructor sections while we still can */
+    get_ctors_dtors(fd, si, hdr);
 
     close(fd);
     return si;
@@ -1246,8 +1395,12 @@ unsigned unload_library(soinfo *si)
 
         for(d = si->dynamic; *d; d += 2) {
             if(d[0] == DT_NEEDED){
+#ifdef	ANDROID_MIPS_LINKER
+                soinfo *lsi = find_library(si->strtab + d[1]);
+#else
                 soinfo *lsi = (soinfo *)d[1];
                 d[1] = 0;
+#endif
                 if (validate_soinfo(lsi)) {
                     TRACE("%5d %s needs to unload %s\n", pid,
                           si->name, lsi->name);
@@ -1291,7 +1444,7 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
     Elf32_Rel *start = rel;
     unsigned idx;
 
-    for (idx = 0; idx < count; ++idx) {
+    for (idx = 0; idx < count; ++idx, ++rel) {
         unsigned type = ELF32_R_TYPE(rel->r_info);
         unsigned sym = ELF32_R_SYM(rel->r_info);
         unsigned reloc = (unsigned)(rel->r_offset + si->base);
@@ -1300,6 +1453,11 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
 
         DEBUG("%5d Processing '%s' relocation at index %d\n", pid,
               si->name, idx);
+
+	/* Ignore R_XXX_NONE relocations */
+	if (type == 0)
+	    continue;
+
         if(sym != 0) {
             sym_name = (char *)(strtab + symtab[sym].st_name);
             s = _do_lookup(si, sym_name, &base);
@@ -1424,6 +1582,25 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
                        reloc, sym_addr, sym_name);
             *((unsigned*)reloc) = sym_addr;
             break;
+#elif defined(ANDROID_MIPS_LINKER)
+	case R_MIPS_JUMP_SLOT:
+            COUNT_RELOC(RELOC_ABSOLUTE);
+            MARK(rel->r_offset);
+            TRACE_TYPE(RELO, "%5d RELO JMP_SLOT %08x <- %08x %s\n", pid,
+                       reloc, sym_addr, sym_name);
+            *((unsigned*)reloc) = sym_addr;
+            break;
+	case R_MIPS_REL32:
+            COUNT_RELOC(RELOC_ABSOLUTE);
+            MARK(rel->r_offset);
+            TRACE_TYPE(RELO, "%5d RELO REL32 %08x <- %08x %s\n", pid,
+                       reloc, sym_addr, sym_name);
+            if (s)
+		*((unsigned*)reloc) = sym_addr;
+	    else
+		
+		*((unsigned*)reloc) += si->base;
+            break;
 #endif /* ANDROID_*_LINKER */
 
 #if defined(ANDROID_ARM_LINKER)
@@ -1479,7 +1656,6 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
                   pid, type, rel, (int) (rel - start));
             return -1;
         }
-        rel++;
     }
     return 0;
 }
@@ -1579,6 +1755,93 @@ static int reloc_library_a(soinfo *si, Elf32_Rela *rela, unsigned count)
 #endif /* ANDROID_SH_LINKER */
 
 
+#ifdef ANDROID_MIPS_LINKER
+int mips_relocate_got(struct soinfo *si)
+{
+    unsigned *got;
+    unsigned local_gotno, gotsym, symtabno;
+    Elf32_Sym *symtab, *sym;
+    unsigned g;
+
+    got = si->plt_got;
+    local_gotno = si->mips_local_gotno;
+    gotsym = si->mips_gotsym;
+    symtabno = si->mips_symtabno;
+    symtab = si->symtab;
+
+    /*
+     * got[0] is address of lazy resolver function
+     * got[1] may be used for a GNU extension
+     * set it to a recognisable address in case someone calls it
+     * (should be _rtld_bind_start)
+     * FIXME: maybe this should be in a separate routine
+     */
+    
+    g = 0;
+    got[g++] = 0xdeadbeef;
+    if (got[g] & 0x80000000)
+	got[g++] = 0xdeadfeed;
+
+    /*
+     * If this is not prelinked or execuatble
+     * then the local GOT entries need to be relocated
+     */
+    if ((si->flags & (FLAG_PRELINKED|FLAG_EXE)) == 0) {
+	for (; g < local_gotno; g++) 
+	    got[g] += si->base;
+    }
+
+    /* Now for the global GOT entries */
+    sym = symtab + gotsym;
+    got = si->plt_got + local_gotno;
+    for (g = gotsym; g < symtabno; g++, sym++, got++) {
+        const char *sym_name;
+	unsigned base;
+	Elf32_Sym *s;
+
+	if (sym->st_shndx != SHN_UNDEF &&
+	    (si->flags & FLAG_PRELINKED)) {
+#ifdef LINKER_DEBUG
+	    /*
+	     * This GOT entry should already contain the correct value
+	     * let's take a look
+	     */
+	    sym_name = si->strtab + sym->st_name;
+	    s = _do_lookup (si, sym_name, &base);
+	    if (s == NULL) {
+		ERROR("%5d In '%s', can't locate symbol %s\n",
+		      pid, si->name, sym_name);
+		return -1;
+	    }
+	    if (*got != base + s->st_value) {
+		ERROR("%5d In '%s', unexpected GOT value for resolved reference"
+		      " have 0x%08x, got 0x%08x\n",
+		      pid, si->name, *got, base + s->st_value);
+		return -1;
+	    }
+#endif
+	    continue;
+	}
+	    
+	/* This is an undefined reference... try to locate it */
+	sym_name = si->strtab + sym->st_name;
+	s = _do_lookup (si, sym_name, &base);
+	if (s == NULL) {
+	    ERROR("%5d In '%s', can't locate symbol %s\n",
+		  pid, si->name, sym_name);
+	    return -1;
+	}
+
+	/* FIXME: is this sufficient?
+	 * For reference see NetBSD link loader
+	 * http://cvsweb.netbsd.org/bsdweb.cgi/src/libexec/ld.elf_so/arch/mips/mips_reloc.c?rev=1.53&content-type=text/x-cvsweb-markup
+	 */
+	*got = base + s->st_value;
+    }
+    return 0;
+}
+#endif
+
 /* Please read the "Initialization and Termination functions" functions.
  * of the linker design note in bionic/linker/README.TXT to understand
  * what the following code is doing.
@@ -1645,6 +1908,14 @@ static void call_constructors(soinfo *si)
         call_array(si->init_array, si->init_array_count, 0);
         TRACE("[ %5d Done calling init_array for '%s' ]\n", pid, si->name);
     }
+
+    if (((si->flags & FLAG_EXE) == 0) && si->ctors) {
+	TRACE("[ %5d Calling ctors @ 0x%08x [%d] for '%s' ]\n",
+              pid, (unsigned)si->ctors, si->ctors_count,
+              si->name);
+        call_array(si->ctors, si->ctors_count, 0);
+        TRACE("[ %5d Done calling ctors for '%s' ]\n", pid, si->name);
+    }
 }
 
 
@@ -1662,6 +1933,14 @@ static void call_destructors(soinfo *si)
               (unsigned)si->fini_func, si->name);
         si->fini_func();
         TRACE("[ %5d Done calling fini_func for '%s' ]\n", pid, si->name);
+    }
+
+    if (((si->flags & FLAG_EXE) == 0) && si->dtors) {
+	TRACE("[ %5d Calling dtors @ 0x%08x [%d] for '%s' ]\n",
+              pid, (unsigned)si->dtors, si->dtors_count,
+              si->name);
+	call_array(si->dtors, si->dtors_count, 1);
+        TRACE("[ %5d Done calling dtors for '%s' ]\n", pid, si->name);
     }
 }
 
@@ -1789,7 +2068,7 @@ static int link_image(soinfo *si, unsigned wr_offset)
                     if (phdr->p_vaddr < si->wrprotect_start)
                         si->wrprotect_start = phdr->p_vaddr;
                     _end = (((phdr->p_vaddr + phdr->p_memsz + PAGE_SIZE - 1) &
-                             (~PAGE_MASK)));
+                             PAGE_MASK));
                     if (_end > si->wrprotect_end)
                         si->wrprotect_end = _end;
                 }
@@ -1869,8 +2148,10 @@ static int link_image(soinfo *si, unsigned wr_offset)
             si->plt_got = (unsigned *)(si->base + *d);
             break;
         case DT_DEBUG:
+#if !defined(ANDROID_MIPS_LINKER)
             // Set the DT_DEBUG entry to the addres of _r_debug for GDB
             *d = (int) &_r_debug;
+#endif
             break;
 #ifdef ANDROID_SH_LINKER
         case DT_RELA:
@@ -1924,6 +2205,50 @@ static int link_image(soinfo *si, unsigned wr_offset)
             DEBUG("%5d Text segment should be writable during relocation.\n",
                   pid);
             break;
+#if defined(ANDROID_MIPS_LINKER)
+	case DT_NEEDED:
+	case DT_STRSZ:
+	case DT_SYMENT:
+	case DT_RELENT:
+	     break;
+	case DT_MIPS_RLD_MAP:
+	    /* Set the DT_MIPS_RLD_MAP entry to the addres of _r_debug for GDB */
+	    {
+	      struct r_debug **dp = (struct r_debug **)*d;
+	      *dp = &_r_debug;
+	    }
+            break;
+	case DT_MIPS_RLD_VERSION:
+	case DT_MIPS_FLAGS:
+	case DT_MIPS_BASE_ADDRESS:
+	case DT_MIPS_UNREFEXTNO:
+	case DT_MIPS_RWPLT:
+	    break;
+
+	case DT_MIPS_PLTGOT:
+#if 0
+	    /* not yet... */
+	    si->mips_pltgot = (unsigned *)(si->base + *d);
+#endif
+	    break;
+
+	case DT_MIPS_SYMTABNO:
+	    si->mips_symtabno = *d;
+	    break;
+
+	case DT_MIPS_LOCAL_GOTNO:
+	    si->mips_local_gotno = *d;
+	    break;
+
+	case DT_MIPS_GOTSYM:
+	    si->mips_gotsym = *d;
+	    break;
+
+	default:
+	    DEBUG("%5d Unused DT entry: type 0x%08x arg 0x%08x\n",
+		  pid, d[-1], d[0]);
+	    break;
+#endif
         }
     }
 
@@ -1969,7 +2294,11 @@ static int link_image(soinfo *si, unsigned wr_offset)
                later on when we resolve relocations, trying to look up a symgol
                with dlsym().
             */
+#ifdef  ANDROID_MIPS_LINKER
+            /*The dynamic section is supposed to be readonly, so for now do things the slow way */
+#else
             d[1] = (unsigned)lsi;
+#endif
             lsi->refcount++;
         }
     }
@@ -1997,6 +2326,11 @@ static int link_image(soinfo *si, unsigned wr_offset)
             goto fail;
     }
 #endif /* ANDROID_SH_LINKER */
+
+#ifdef ANDROID_MIPS_LINKER
+    if(mips_relocate_got(si))
+        goto fail;
+#endif
 
     si->flags |= FLAG_LINKED;
     DEBUG("[ %5d finished linking %s ]\n", pid, si->name);
@@ -2213,13 +2547,6 @@ unsigned __linker_init(unsigned **elfdata)
         parse_preloads(ldpreload_env, " :");
     }
 
-    if(link_image(si, 0)) {
-        char errmsg[] = "CANNOT LINK EXECUTABLE\n";
-        write(2, __linker_dl_err_buf, strlen(__linker_dl_err_buf));
-        write(2, errmsg, sizeof(errmsg));
-        exit(-1);
-    }
-
 #if ALLOW_SYMBOLS_FROM_MAIN
     /* Set somain after we've loaded all the libraries in order to prevent
      * linking of symbols back to the main image, which is not set up at that
@@ -2227,6 +2554,13 @@ unsigned __linker_init(unsigned **elfdata)
      */
     somain = si;
 #endif
+
+    if(link_image(si, 0)) {
+        char errmsg[] = "CANNOT LINK EXECUTABLE\n";
+        write(2, __linker_dl_err_buf, strlen(__linker_dl_err_buf));
+        write(2, errmsg, sizeof(errmsg));
+        exit(-1);
+    }
 
 #if TIMING
     gettimeofday(&t1,NULL);

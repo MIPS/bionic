@@ -70,10 +70,17 @@ re_nr_line       = re.compile( r"#define __NR_(\w*)\s*\(__NR_SYSCALL_BASE\+\s*(\
 re_nr_clock_line = re.compile( r"#define __NR_(\w*)\s*\(__NR_timer_create\+(\w*)\)" )
 re_arm_nr_line   = re.compile( r"#define __ARM_NR_(\w*)\s*\(__ARM_NR_BASE\+\s*(\w*)\)" )
 re_x86_line      = re.compile( r"#define __NR_(\w*)\s*([0-9]*)" )
+re_mips_line     = re.compile( r"#define __NR_(\w*)\s*\(__NR_Linux\s*\+\s*([0-9]*)\)" )
 
 # now read the Linux arm header
 def process_nr_line(line,dict):
 
+    m = re_mips_line.match(line)
+    if m:
+        if dict["Linux"]==4000:
+            dict[m.group(1)] = int(m.group(2))
+        return
+        
     m = re_nr_line.match(line)
     if m:
         dict[m.group(1)] = int(m.group(2))
@@ -86,8 +93,13 @@ def process_nr_line(line,dict):
 
     m = re_arm_nr_line.match(line)
     if m:
-        #print "%s = %s" % (m.group(1), m.group(2))
-        dict["ARM_"+m.group(1)] = int(m.group(2)) + 0x0f0000
+        # try block because the ARM header has a 'hidden' syscall
+        # whose value is hex and and shouldn't be added
+        # print "%s = %s" % (m.group(1), m.group(2))
+        try:
+            dict["ARM_"+m.group(1)] = int(m.group(2)) + 0x0f0000
+        except:
+            pass
         return
 
     m = re_x86_line.match(line)
@@ -112,6 +124,8 @@ def process_header(header_file,dict):
 
 arm_dict = {}
 x86_dict = {}
+sh_dict = {}
+mips_dict = {}
 
 
 # remove trailing slash and '/include' from the linux_root, if any
@@ -121,35 +135,47 @@ if linux_root[-1] == '/':
 if len(linux_root) > 8 and linux_root[-8:] == '/include':
     linux_root = linux_root[:-8]
 
-arm_unistd = linux_root + "/include/asm-arm/unistd.h"
-if not os.path.exists(arm_unistd):
-    print "WEIRD: could not locate the ARM unistd.h header file"
-    print "tried searching in '%s'" % arm_unistd
+def find_archfile(archs,files):
+    paths = []
+    for a in archs:
+        for f in files:
+            path = linux_root + '/include/asm-' + a + '/' + f
+            if (os.path.exists(path)):
+                return path
+            paths.append(path)
+            path = linux_root + '/arch/' + a + '/include/asm/' + f
+            if (os.path.exists(path)):
+                return path
+            paths.append(path)
+    print "WEIRD: could not locate the file %s for arch %s" % (files, archs)
+    print "tried searching in:"
+    for path in paths:
+        print "  %s" % path
     print "maybe using a different set of kernel headers might help"
     sys.exit(1)
+
+arm_unistd = find_archfile(['arm'],['unistd.h'])
 
 # on recent kernels, asm-i386 and asm-x64_64 have been merged into asm-x86
 # with two distinct unistd_32.h and unistd_64.h definition files.
 # take care of this here
 #
-x86_unistd = linux_root + "/include/asm-i386/unistd.h"
-if not os.path.exists(x86_unistd):
-    x86_unistd1 = x86_unistd
-    x86_unistd = linux_root + "/include/asm-x86/unistd_32.h"
-    if not os.path.exists(x86_unistd):
-        print "WEIRD: could not locate the i386/x86 unistd.h header file"
-        print "tried searching in '%s' and '%s'" % (x86_unistd1, x86_unistd)
-        print "maybe using a different set of kernel headers might help"
-        sys.exit(1)
+x86_unistd = find_archfile(['x86','i386'],['unistd_32.h','unistd.h'])
+sh_unistd = find_archfile(['sh'],['unistd_32.h','unistd.h'])
+mips_unistd = find_archfile(['mips'],['unistd.h'])
 
-process_header( linux_root+"/include/asm-arm/unistd.h", arm_dict )
+process_header( arm_unistd, arm_dict )
 process_header( x86_unistd, x86_dict )
+process_header( sh_unistd, sh_dict)
+process_header( mips_unistd, mips_dict)
 
 # now perform the comparison
 errors = 0
 for sc in syscalls:
     sc_name = sc["name"]
-    sc_id   = sc["id"]
+    sc_id   = sc["common"]
+    if sc_id < 0:
+        sc_id   = sc["armid"]
     if sc_id >= 0:
         if not arm_dict.has_key(sc_name):
             print "arm syscall %s not defined !!" % sc_name
@@ -160,13 +186,41 @@ for sc in syscalls:
 
 for sc in syscalls:
     sc_name = sc["name"]
-    sc_id2  = sc["id2"]
-    if sc_id2 >= 0:
+    sc_id   = sc["common"]
+    if sc_id < 0:
+        sc_id  = sc["x86id"]
+    if sc_id >= 0:
         if not x86_dict.has_key(sc_name):
             print "x86 syscall %s not defined !!" % sc_name
             errors += 1
-        elif x86_dict[sc_name] != sc_id2:
-            print "x86 syscall %s should be %d instead of %d !!" % (sc_name, x86_dict[sc_name], sc_id2)
+        elif x86_dict[sc_name] != sc_id:
+            print "x86 syscall %s should be %d instead of %d !!" % (sc_name, x86_dict[sc_name], sc_id)
+            errors += 1
+
+for sc in syscalls:
+    sc_name = sc["name"]
+    sc_id   = sc["common"]
+    if sc_id < 0:
+        sc_id  = sc["shid"]
+    if sc_id >= 0:
+        if not sh_dict.has_key(sc_name):
+            print "sh syscall %s not defined !!" % sc_name
+            errors += 1
+        elif sh_dict[sc_name] != sc_id:
+            print "sh syscall %s should be %d instead of %d !!" % (sc_name, sh_dict[sc_name], sc_id)
+            errors += 1
+
+for sc in syscalls:
+    sc_name = sc["name"]
+    sc_id   = sc["common"]
+    if sc_id < 0:
+        sc_id  = sc["mipsid"]
+    if sc_id >= 0:
+        if not mips_dict.has_key(sc_name):
+            print "mips syscall %s not defined !!" % sc_name
+            errors += 1
+        elif mips_dict[sc_name] != sc_id:
+            print "mips syscall %s should be %d instead of %d !!" % (sc_name, mips_dict[sc_name], sc_id)
             errors += 1
 
 if errors == 0:
