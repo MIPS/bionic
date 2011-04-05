@@ -17,7 +17,7 @@ __waitid:
 
     /* check return value */
     cmp/pz  r0
-    bt      __NR_waitid_end
+    bt      __NR___waitid_end
 
     /* keep error number */
     sts.l   pr, @-r15
@@ -26,10 +26,10 @@ __waitid:
     mov     r0, r4
     lds.l   @r15+, pr
 
-__NR_waitid_end:
+__NR___waitid_end:
     rts
     nop
 
     .align  2
-0:  .long   __NR_waitid
+0:  .long   __NR___waitid
 1:  .long   __set_syscall_errno

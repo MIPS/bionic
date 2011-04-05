@@ -108,7 +108,6 @@ __noreturn void __libc_init(uintptr_t *elfdata,
     char**  argv = (char**)(elfdata + 1);
     char**  envp = argv + argc + 1;
 
-#error comment above says that constructors have been run
     /* .ctors section initializers, for non-arm-eabi ABIs */
     call_array(structors->ctors_array);
 
