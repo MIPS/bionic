@@ -12,7 +12,7 @@ __waitid:
     .save   {r4, r5, r6, r7}
     stmfd   sp!, {r4, r5, r6, r7}
     ldmfd   ip, {r4, r5, r6}
-    ldr     r7, =__NR___waitid
+    ldr     r7, =__NR_waitid
     swi     #0
     ldmfd   sp!, {r4, r5, r6, r7}
     movs    r0, r0

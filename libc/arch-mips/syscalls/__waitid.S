@@ -8,7 +8,7 @@
 __waitid:
     .set noreorder
     .cpload $t9
-    li $v0, __NR___waitid
+    li $v0, __NR_waitid
     syscall
     bnez $a3, 1f
      move $a0, $v0

@@ -17,7 +17,7 @@ __waitid:
     mov     32(%esp), %edx
     mov     36(%esp), %esi
     mov     40(%esp), %edi
-    movl    $__NR___waitid, %eax
+    movl    $__NR_waitid, %eax
     int     $0x80
     cmpl    $-129, %eax
     jb      1f
