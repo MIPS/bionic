@@ -1,6 +1,9 @@
 # This function is to be called when the shared library
 # is unloaded through dlclose()
 _on_dlclose:
+	.set noreorder
+	.cpload $t9
+	.set reorder
 	lw	$a0, __dso_handle
 	la	$t9, __cxa_finalize
 	j	$t9
