@@ -33,11 +33,6 @@
 #include <sys/types.h>
 #include <linux/elf.h>
 
-#undef PAGE_MASK
-#undef PAGE_SIZE
-#define PAGE_SIZE 4096
-#define PAGE_MASK 4095
-
 void debugger_init();
 const char *addr_to_name(unsigned addr);
 
