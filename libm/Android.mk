@@ -195,7 +195,7 @@ ifeq ($(TARGET_ARCH),mips)
 
   libm_common_includes = $(LOCAL_PATH)/mips
   # Need to build *rint* functions
-  libm_common_cflags += -fno-builtin-rintf
+  libm_common_cflags += -fno-builtin-rintf -fno-builtin-llrint -fno-builtin-lrint
 endif
 
 # libm.a
