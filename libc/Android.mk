@@ -219,7 +219,6 @@ libc_common_src_files := \
 	tzcode/localtime.c \
 	tzcode/strftime.c \
 	tzcode/strptime.c \
-	bionic/__errno.c \
 	bionic/__set_errno.c \
 	bionic/_rand48.c \
 	bionic/cpuacct.c \
@@ -294,6 +293,7 @@ ifeq ($(TARGET_ARCH),arm)
 libc_common_src_files += \
 	bionic/eabi.c \
 	bionic/bionic_clone.c \
+	bionic/__errno.c \
 	arch-arm/bionic/__get_pc.S \
 	arch-arm/bionic/__get_sp.S \
 	arch-arm/bionic/_exit_with_stack_teardown.S \
@@ -310,18 +310,18 @@ libc_common_src_files += \
 	arch-arm/bionic/memset.S \
 	arch-arm/bionic/setjmp.S \
 	arch-arm/bionic/sigsetjmp.S \
-	arch-arm/bionic/strlen.c.arm \
+	arch-arm/bionic/strlen.c.arch \
 	arch-arm/bionic/syscall.S \
-	string/memmove.c.arm \
+	string/memmove.c.arch \
 	unistd/socketcalls.c
 
 # These files need to be arm so that gdbserver
 # can set breakpoints in them without messing
 # up any thumb code.
 libc_common_src_files += \
-	bionic/pthread.c.arm \
-	bionic/pthread-timers.c.arm \
-	bionic/ptrace.c.arm
+	bionic/pthread.c.arch \
+	bionic/pthread-timers.c.arch \
+	bionic/ptrace.c.arch
 
 # these are used by the static and dynamic versions of the libc
 # respectively
@@ -330,19 +330,19 @@ libc_arch_static_src_files := \
 
 libc_arch_dynamic_src_files := \
 	arch-arm/bionic/exidx_dynamic.c
+	bionic/libc_init_dynamic.c
 endif # arm
 
 ifeq ($(TARGET_ARCH),mips)
 libc_common_src_files += \
 	bionic/eabi.c \
 	arch-mips/bionic/__get_sp.S \
-	arch-mips/bionic/__get_tls.c \
+	arch-mips/bionic/__get_tls.c.arch \
 	arch-mips/bionic/__set_tls.c \
 	arch-mips/bionic/_exit_with_stack_teardown.S \
 	arch-mips/bionic/_setjmp.S \
 	arch-mips/bionic/atomics_mips.S \
 	arch-mips/bionic/bzero.S \
-	arch-mips/bionic/cacheflush.c \
 	arch-mips/bionic/clone.S \
 	arch-mips/bionic/clonecall.S \
 	arch-mips/bionic/ffs.S \
@@ -363,18 +363,23 @@ libc_common_src_files += \
 	string/memcmp.c
 
 libc_common_src_files += \
-	bionic/pthread.c \
-	bionic/pthread-timers.c \
-	bionic/ptrace.c
+	arch-mips/bionic/cacheflush.c.arch \
+	bionic/pthread.c.arch \
+	bionic/pthread-timers.c.arch \
+	bionic/ptrace.c.arch \
+	bionic/__errno.c.arch
 
 # this is needed for static versions of libc
 libc_arch_static_src_files := \
 	arch-mips/bionic/dl_iterate_phdr_static.c
 
+libc_arch_dynamic_src_files := \
+	bionic/libc_init_dynamic.c.arch
 endif # mips
 
 ifeq ($(TARGET_ARCH),x86)
 libc_common_src_files += \
+	bionic/__errno.c \
 	arch-x86/bionic/__get_sp.S \
 	arch-x86/bionic/__get_tls.c \
 	arch-x86/bionic/__set_tls.c \
@@ -399,11 +404,13 @@ libc_common_src_files += \
 libc_arch_static_src_files := \
 	arch-x86/bionic/dl_iterate_phdr_static.c
 
-libc_arch_dynamic_src_files :=
+libc_arch_dynamic_src_files := \
+	bionic/libc_init_dynamic.c
 endif # x86
 
 ifeq ($(TARGET_ARCH),sh)
 libc_common_src_files += \
+	bionic/__errno.c \
 	arch-sh/bionic/__get_pc.S \
 	arch-sh/bionic/__get_sp.S \
 	arch-sh/bionic/_exit_with_stack_teardown.S \
@@ -495,6 +502,23 @@ libc_common_c_includes := \
 # which are needed to build all other objects (shared/static libs and
 # executables)
 # ==========================================================================
+
+ifeq ($(TARGET_ARCH),mips)
+# we only need begin_so/end_so for mips, since it needs an appropriate .init
+# section in the shared library with a function to call all the entries in
+# .ctors section.
+GEN := $(TARGET_OUT_STATIC_LIBRARIES)/crtbegin_so.o
+$(GEN): $(LOCAL_PATH)/arch-$(TARGET_ARCH)/bionic/crtbegin_so.S
+	@mkdir -p $(dir $@)
+	$(TARGET_CC) $(libc_crt_target_cflags) -o $@ -c $<
+ALL_GENERATED_SOURCES += $(GEN)
+
+GEN := $(TARGET_OUT_STATIC_LIBRARIES)/crtend_so.o
+$(GEN): $(LOCAL_PATH)/arch-$(TARGET_ARCH)/bionic/crtend_so.S
+	@mkdir -p $(dir $@)
+	$(TARGET_CC) $(libc_crt_target_cflags) -o $@ -c $<
+ALL_GENERATED_SOURCES += $(GEN)
+endif # TARGET_ARCH == mips
 
 ifeq ($(TARGET_ARCH),x86)
 # we only need begin_so/end_so for x86, since it needs an appropriate .init
@@ -612,8 +636,7 @@ LOCAL_C_INCLUDES := $(libc_common_c_includes)
 LOCAL_SRC_FILES := \
 	$(libc_arch_dynamic_src_files) \
 	bionic/dlmalloc.c \
-	bionic/malloc_debug_common.c \
-	bionic/libc_init_dynamic.c
+	bionic/malloc_debug_common.c
 
 LOCAL_MODULE:= libc
 
