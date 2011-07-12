@@ -194,8 +194,9 @@ ifeq ($(TARGET_ARCH),mips)
 	src/s_sincosf.c
 
   libm_common_includes = $(LOCAL_PATH)/mips
-  # Need to build *rint* functions
-  libm_common_cflags += -fno-builtin-rintf -fno-builtin-llrint -fno-builtin-lrint
+  # All of the *rint* functions in libm are being built in terms of
+  # rint or rintf - so just disable compiler from messing these two up
+  libm_common_cflags += -fno-builtin-rint -fno-builtin-rintf
 endif
 
 # libm.a
