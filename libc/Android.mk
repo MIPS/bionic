@@ -328,8 +328,13 @@ libc_common_src_files := \
 #       below.
 #
 libc_static_common_src_files := \
-        unistd/sysconf.c \
-        bionic/__errno.c \
+        unistd/sysconf.c
+
+ifeq ($(TARGET_ARCH),mips)
+libc_static_common_src_files += bionic/__errno.c.arch
+else
+libc_static_common_src_files += bionic/__errno.c
+endif
 
 # Architecture specific source files go here
 # =========================================================
@@ -353,9 +358,9 @@ libc_common_src_files += \
 	arch-arm/bionic/memset.S \
 	arch-arm/bionic/setjmp.S \
 	arch-arm/bionic/sigsetjmp.S \
-	arch-arm/bionic/strlen.c.arm \
+	arch-arm/bionic/strlen.c.arch \
 	arch-arm/bionic/syscall.S \
-	string/memmove.c.arm \
+	string/memmove.c.arch \
 	string/bcopy.c \
 	string/strcmp.c \
 	string/strncmp.c \
@@ -365,12 +370,12 @@ libc_common_src_files += \
 # can set breakpoints in them without messing
 # up any thumb code.
 libc_common_src_files += \
-	bionic/pthread-rwlocks.c.arm \
-	bionic/pthread-timers.c.arm \
-	bionic/ptrace.c.arm
+	bionic/pthread-rwlocks.c.arch \
+	bionic/pthread-timers.c.arch \
+	bionic/ptrace.c.arch
 
 libc_static_common_src_files += \
-        bionic/pthread.c.arm \
+        bionic/pthread.c.arch \
 
 # these are used by the static and dynamic versions of the libc
 # respectively
@@ -384,13 +389,13 @@ endif # arm
 ifeq ($(TARGET_ARCH),mips)
 libc_common_src_files += \
 	arch-mips/bionic/__get_sp.S \
-	arch-mips/bionic/__get_tls.c \
+	arch-mips/bionic/__get_tls.c.arch \
 	arch-mips/bionic/__set_tls.c \
 	arch-mips/bionic/_exit_with_stack_teardown.S \
 	arch-mips/bionic/_setjmp.S \
 	arch-mips/bionic/atomics_mips.S \
 	arch-mips/bionic/bzero.S \
-	arch-mips/bionic/cacheflush.c \
+	arch-mips/bionic/cacheflush.c.arch \
 	arch-mips/bionic/clone.S \
 	arch-mips/bionic/clonecall.S \
 	arch-mips/bionic/ffs.S \
@@ -414,10 +419,10 @@ libc_common_src_files += \
 	string/strncmp.c
 
 libc_common_src_files += \
-	bionic/pthread.c \
-	bionic/pthread-rwlocks.c \
-	bionic/pthread-timers.c \
-	bionic/ptrace.c
+	bionic/pthread.c.arch \
+	bionic/pthread-rwlocks.c.arch \
+	bionic/pthread-timers.c.arch \
+	bionic/ptrace.c.arch
 
 # this is needed for static versions of libc
 libc_arch_static_src_files := \
@@ -702,8 +707,14 @@ LOCAL_SRC_FILES := \
 	$(libc_arch_dynamic_src_files) \
 	$(libc_static_common_src_files) \
 	bionic/dlmalloc.c \
-	bionic/malloc_debug_common.c \
-	bionic/libc_init_dynamic.c
+	bionic/malloc_debug_common.c
+
+
+ifeq ($(TARGET_ARCH),mips)
+LOCAL_SRC_FILES += bionic/libc_init_dynamic.c.arch
+else
+LOCAL_SRC_FILES += bionic/libc_init_dynamic.c
+endif
 
 LOCAL_MODULE:= libc
 
