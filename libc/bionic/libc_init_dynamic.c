@@ -59,6 +59,14 @@
  */
 void __attribute__((constructor)) __libc_preinit(void);
 
+static void call_array(void(**list)())
+{
+    // First element is -1, list is null-terminated
+    while (*++list) {
+        (*list)();
+    }
+}
+
 void __libc_preinit(void)
 {
     /* Read the ELF data pointer from a special slot of the
@@ -99,6 +107,11 @@ __noreturn void __libc_init(uintptr_t *elfdata,
     int     argc = (int)*elfdata;
     char**  argv = (char**)(elfdata + 1);
     char**  envp = argv + argc + 1;
+
+#ifndef __i386__
+    /* .ctors section initializers, for non-arm-eabi ABIs */
+    call_array(structors->ctors_array);
+#endif
 
     /* Several Linux ABIs don't pass the onexit pointer, and the ones that
      * do never use it.  Therefore, we ignore it.
