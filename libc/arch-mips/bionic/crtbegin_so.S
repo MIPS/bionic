@@ -30,7 +30,6 @@
 	.globl __INIT_ARRAY__
 __INIT_ARRAY__:
 	.long -1
-	.long frame_dummy
 
 	.section .fini_array, "aw"
 	.type __FINI_ARRAY__, @object
@@ -45,53 +44,19 @@ __FINI_ARRAY__:
 __CTOR_LIST__:
 	.long -1
 
+	.section .dtors, "aw"
+	.type __DTOR_LIST__, @object
+	.globl __DTOR_LIST__
+__DTOR_LIST__:
+	.long -1
+
 	.abicalls
-	.section	eh_frame,"a",@progbits
+	.section	.eh_frame,"a",@progbits
 	.align	2
 	.type	__EH_FRAME_BEGIN__, @object
 	.size	__EH_FRAME_BEGIN__, 0
 __EH_FRAME_BEGIN__:
 	.text
-	.align	2
-	.set	nomips16
-	.ent	frame_dummy
-	.type	frame_dummy, @function
-frame_dummy:
-	.frame	$sp,32,$31		# vars= 0, regs= 1/0, args= 16, gp= 8
-	.mask	0x80000000,-4
-	.fmask	0x00000000,0
-	.set	noreorder
-	.cpload	$25
-	.set	nomacro
-	addiu	$sp,$sp,-32
-	sw	$31,28($sp)
-	.cprestore	16
-	lw	$2,%got(__register_frame_info)($28)
-	beq	$2,$0,$L1
-	nop
-
-	lw	$2,%got(__EH_FRAME_BEGIN__)($28)
-	addiu	$4,$2,%lo(__EH_FRAME_BEGIN__)
-	lw	$2,%got(object.1265)($28)
-	addiu	$5,$2,%lo(object.1265)
-	lw	$2,%call16(__register_frame_info)($28)
-	move	$25,$2
-	.reloc	1f,R_MIPS_JALR,__register_frame_info
-1:	jalr	$25
-	nop
-
-	lw	$28,16($sp)
-$L1:
-	lw	$31,28($sp)
-	addiu	$sp,$sp,32
-	j	$31
-	nop
-
-	.text
-	.set	macro
-	.set	reorder
-	.end	frame_dummy
-	.size	frame_dummy, .-frame_dummy
 	.align	2
 	.set	nomips16
 	.ent	__do_global_dtors_aux
@@ -117,39 +82,18 @@ $L4:
 	nop
 
 	lw	$2,%got(__dso_handle)($28)
-	lw	$2,0($2)
-	move	$4,$2
-	lw	$2,%call16(__cxa_finalize)($28)
-	move	$25,$2
+	lw	$4,0($2)
+	lw	$25,%call16(__cxa_finalize)($28)
 	.reloc	1f,R_MIPS_JALR,__cxa_finalize
 1:	jalr	$25
 	nop
 
 	lw	$28,16($sp)
 $L6:
-	lw	$2,%got(__deregister_frame_info)($28)
-	beq	$2,$0,$L7
-	nop
-
-	lw	$2,%got(__EH_FRAME_BEGIN__)($28)
-	addiu	$4,$2,%lo(__EH_FRAME_BEGIN__)
-	lw	$2,%call16(__deregister_frame_info)($28)
-	move	$25,$2
-	.reloc	1f,R_MIPS_JALR,__deregister_frame_info
-1:	jalr	$25
-	nop
-
-	lw	$28,16($sp)
-$L7:
 	lw	$2,%got(completed.1269)($28)
 	li	$3,1			# 0x1
 	sb	$3,%lo(completed.1269)($2)
-	b	$L3
-	nop
-
 $L8:
-	nop
-$L3:
 	lw	$31,28($sp)
 	addiu	$sp,$sp,32
 	j	$31
@@ -163,9 +107,7 @@ $L3:
 	.comm	completed.1269,1,1
 	.local	object.1265
 	.comm	object.1265,24,4
-	.weak	__deregister_frame_info
 	.weak	__cxa_finalize
-	.weak	__register_frame_info
 
 #include "__dso_handle_so.S"
 #include "atexit.S"

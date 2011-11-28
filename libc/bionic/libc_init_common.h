@@ -35,8 +35,12 @@ typedef struct
     void (**preinit_array)(void);
     void (**init_array)(void);
     void (**fini_array)(void);
-#ifndef __i386__
+#ifdef __arm__
     void (**ctors_array)(void);
+#endif
+#ifdef __mips__
+    void (**ctors_array)(void);
+    void (**dtors_array)(void);
 #endif
 } structors_array_t;
 

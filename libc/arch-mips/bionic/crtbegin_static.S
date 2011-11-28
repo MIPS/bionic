@@ -71,31 +71,42 @@ _start:
 	.long	__INIT_ARRAY__
 	.long	__FINI_ARRAY__
 	.long	__CTOR_LIST__
+	.long	__DTOR_LIST__
 
 	.section .preinit_array, "aw"
+	.type __PREINIT_ARRAY__, @object
 	.globl __PREINIT_ARRAY__
 __PREINIT_ARRAY__:
 	.long -1
 
 	.section .init_array, "aw"
+	.type __INIT_ARRAY__, @object
 	.globl __INIT_ARRAY__
 __INIT_ARRAY__:
 	.long -1
-	.long	frame_dummy
+	.long frame_dummy
 
 	.section .fini_array, "aw"
+	.type __FINI_ARRAY__, @object
 	.globl __FINI_ARRAY__
 __FINI_ARRAY__:
 	.long -1
-	.long	__do_global_dtors_aux
+	.long __do_global_dtors_aux
 
 	.section .ctors, "aw"
+	.type __CTOR_LIST__, @object
 	.globl __CTOR_LIST__
 __CTOR_LIST__:
 	.long -1
 
+	.section .dtors, "aw"
+	.type __DTOR_LIST__, @object
+	.globl __DTOR_LIST__
+__DTOR_LIST__:
+	.long -1
+
 	.abicalls
-	.section	eh_frame,"a",@progbits
+	.section	.eh_frame,"a",@progbits
 	.align	2
 	.type	__EH_FRAME_BEGIN__, @object
 	.size	__EH_FRAME_BEGIN__, 0

@@ -8,6 +8,11 @@
 	.type __CTOR_END__, @object
 __CTOR_END__:
 	.long 0
+	
+	.section .dtors, "aw", @progbits
+	.type __DTOR_END__, @object
+__DTOR_END__:
+	.long 0
 
 	.section	.eh_frame,"a",@progbits
 	.align 4
