@@ -450,6 +450,35 @@ static Elf32_Sym *_elf_lookup(soinfo *si, unsigned hash, const char *name)
         }
     }
 
+#ifdef ANDROID_MIPS_LINKER
+    /*
+     * Some shared libraries  built by the NDK do not have a
+     * weak definition for __dso_handle so return a fake one here
+     */
+
+    if (((si->flags & FLAG_EXE) == 0) && (strcmp(name, "__dso_handle") == 0)) {
+        static Elf32_Sym fake_dso_handle = {
+            .st_name = 0,	/* This will give a name of '' if referenced */
+            .st_value = 0,
+            .st_size = 4,
+            .st_info = (STB_GLOBAL << 4) | STT_NOTYPE,
+            .st_other = 0,
+            .st_shndx = SHN_COMMON, /* !SHN_UNDEF */
+        };
+	/*
+	 * Patch up the symbol so that it will resolve to &si->base
+	 * when it is used. When __dso_handle is dereferenced it will
+	 * be a uniqe value. It's ok to return a pointer to this static
+	 * value as the symbol will be used immediately.
+	 */
+	fake_dso_handle.st_value =
+		(Elf32_Word)((unsigned int)&si->base - (unsigned int)si->base);
+        WARN("returning fake __dso_symbol value=%08x for %s\n",
+	     fake_dso_handle.st_value, si->name);
+        return &fake_dso_handle;
+    }
+#endif
+
     return NULL;
 }
 
@@ -480,17 +509,15 @@ _do_lookup(soinfo *si, const char *name, unsigned *base)
     int weak_sym_def_found = 0;
     soinfo *weak_si = NULL;
 
-    /* Process weak symbols for MIPS:
+    /*
+     * Process weak symbols for MIPS:
      *
      * -> If we get a hard symbol (def or no def), ignore weak symbol
      * -> If we already have a weak symbol definition, then ignore all
      *    further weak symbols (refs & defs)
      * -> We always overwrite weak symbol references with new ones, until
      *    on weak definition is found
-     *
-     * IS_SYMBOL_WEAK(s)? -> (ELF32_ST_BIND((s)->st_info) == STB_WEAK)
-     * IS_SYMBOL_DEFINITION_AVAIL(s)? -> ((s)->st_shndx != SHN_UNDEF)
-     * */
+     */
 #define    PROCESS_SYMBOL(sym, si_struct)    do { \
     if (sym) { \
         if ((ELF32_ST_BIND((sym)->st_info) != STB_WEAK)) \
