@@ -70,10 +70,17 @@ re_nr_line       = re.compile( r"#define __NR_(\w*)\s*\(__NR_SYSCALL_BASE\+\s*(\
 re_nr_clock_line = re.compile( r"#define __NR_(\w*)\s*\(__NR_timer_create\+(\w*)\)" )
 re_arm_nr_line   = re.compile( r"#define __ARM_NR_(\w*)\s*\(__ARM_NR_BASE\+\s*(\w*)\)" )
 re_x86_line      = re.compile( r"#define __NR_(\w*)\s*([0-9]*)" )
+re_mips_line     = re.compile( r"#define __NR_(\w*)\s*\(__NR_Linux\s*\+\s*([0-9]*)\)" )
 
 # now read the Linux arm header
 def process_nr_line(line,dict):
 
+    m = re_mips_line.match(line)
+    if m:
+        if dict["Linux"]==4000:
+            dict[m.group(1)] = int(m.group(2))
+        return
+        
     m = re_nr_line.match(line)
     if m:
         dict[m.group(1)] = int(m.group(2))
@@ -119,6 +126,7 @@ def process_header(header_file,dict):
 arm_dict = {}
 x86_dict = {}
 superh_dict = {}
+mips_dict = {}
 
 # remove trailing slash from the linux_root, if any
 if linux_root[-1] == '/':
@@ -148,9 +156,16 @@ if not superh_unistd:
     print "maybe using a different set of kernel headers might help."
     sys.exit(1)
 
+mips_unistd = find_arch_header(linux_root, "mips", "unistd.h")
+if not mips_unistd:
+    print "WEIRD: Could not locate the Mips unistd.h kernel header file,"
+    print "maybe using a different set of kernel headers might help."
+    sys.exit(1)
+
 process_header( arm_unistd, arm_dict )
 process_header( x86_unistd, x86_dict )
 process_header( superh_unistd, superh_dict )
+process_header( mips_unistd, mips_dict )
 
 # now perform the comparison
 errors = 0
@@ -172,9 +187,10 @@ def check_syscalls(archname, idname, arch_dict):
                 errors += 1
     return errors
 
-errors += check_syscalls("arm", "id", arm_dict)
-errors += check_syscalls("x86", "id2", x86_dict)
-errors += check_syscalls("superh", "id3", superh_dict)
+errors += check_syscalls("arm", "armid", arm_dict)
+errors += check_syscalls("x86", "x86id", x86_dict)
+errors += check_syscalls("superh", "shid", superh_dict)
+errors += check_syscalls("mips", "mipsid", mips_dict)
 
 if errors == 0:
     print "congratulations, everything's fine !!"
