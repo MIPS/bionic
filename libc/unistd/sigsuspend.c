@@ -31,7 +31,10 @@ extern int __sigsuspend(int, int, unsigned int);
 
 int sigsuspend(const sigset_t *_mask)
 {
-    unsigned int    mask = (unsigned int)*_mask;
-
+	unsigned int    mask = (unsigned int)_mask;
+#ifdef __mips__
+	return __sigsuspend(mask, 0, 0);
+#else
 	return __sigsuspend(0, 0, mask);
+#endif
 }
