@@ -59,6 +59,7 @@
  */
 void __attribute__((constructor)) __libc_preinit(void);
 
+#ifdef __mips__
 static void call_array(void(**list)())
 {
     // First element is -1, list is null-terminated
@@ -66,6 +67,7 @@ static void call_array(void(**list)())
         (*list)();
     }
 }
+#endif
 
 void __libc_preinit(void)
 {
@@ -108,7 +110,7 @@ __noreturn void __libc_init(uintptr_t *elfdata,
     char**  argv = (char**)(elfdata + 1);
     char**  envp = argv + argc + 1;
 
-#ifndef __i386__
+#ifdef __mips__
     /* .ctors section initializers, for non-arm-eabi ABIs */
     call_array(structors->ctors_array);
 #endif
@@ -123,6 +125,10 @@ __noreturn void __libc_init(uintptr_t *elfdata,
      */
     if (structors->fini_array)
         __cxa_atexit(__libc_fini,structors->fini_array,NULL);
+#ifdef __mips__
+    /* run .dtors section destructors */
+    __cxa_atexit(__libc_fini,structors->dtors_array,NULL);
+#endif
 
     exit(slingshot(argc, argv, envp));
 }
