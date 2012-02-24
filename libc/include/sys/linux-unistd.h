@@ -230,6 +230,7 @@ int              eventfd (unsigned int, int);
 int              __set_tls (void*);
 int              cacheflush (long start, long end, long flags);
 int              _flush_cache (char *addr, const int nbytes, const int op);
+int              syscall (int number,...);
 #ifdef __cplusplus
 }
 #endif
