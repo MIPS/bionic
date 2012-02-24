@@ -406,7 +406,6 @@ libc_common_src_files += \
 	arch-mips/bionic/pipe.S \
 	arch-mips/bionic/setjmp.S \
 	arch-mips/bionic/sigsetjmp.S \
-	arch-mips/bionic/syscall.S \
 	arch-mips/bionic/vfork.S
 
 libc_common_src_files += \
