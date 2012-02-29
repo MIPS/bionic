@@ -33,15 +33,15 @@
 /* WARNING: DO NOT EDIT, AUTO-GENERATED CODE - SEE TOP FOR INSTRUCTIONS */
 #define ACX 78
 struct pt_regs {
- unsigned long regs[32];
- unsigned long cp0_status;
+ unsigned long long regs[32];
+ unsigned long long lo;
 /* WARNING: DO NOT EDIT, AUTO-GENERATED CODE - SEE TOP FOR INSTRUCTIONS */
- unsigned long hi;
- unsigned long lo;
- unsigned long cp0_badvaddr;
- unsigned long cp0_cause;
+ unsigned long long hi;
+ unsigned long long cp0_epc;
+ unsigned long long cp0_badvaddr;
+ unsigned long long cp0_status;
 /* WARNING: DO NOT EDIT, AUTO-GENERATED CODE - SEE TOP FOR INSTRUCTIONS */
- unsigned long cp0_epc;
+ unsigned long long cp0_cause;
 } __attribute__ ((aligned (8)));
 #define PTRACE_GETREGS 12
 #define PTRACE_SETREGS 13
