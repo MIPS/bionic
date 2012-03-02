@@ -391,6 +391,7 @@
 #endif
 
 #ifdef __mips__
+#define __NR_syscall                      (__NR_SYSCALL_BASE + 0)
 #define __NR_waitpid                      (__NR_SYSCALL_BASE + 7)
 #define __NR_lchown                       (__NR_SYSCALL_BASE + 16)
 #define __NR_setuid                       (__NR_SYSCALL_BASE + 23)
