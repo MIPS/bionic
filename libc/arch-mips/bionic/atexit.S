@@ -37,7 +37,7 @@ atexit:
 	.set	reorder
 	la	$t9, __cxa_atexit
 	move	$a1, $0
-	move	$a2, $0
+	la	$a2, __dso_handle
 	j	$t9
 	.size	atexit, .-atexit
 	.end	atexit
