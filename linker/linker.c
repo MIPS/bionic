@@ -1233,11 +1233,11 @@ get_ctors_dtors(int fd, soinfo *si, Elf32_Ehdr *ehdr)
     for(cnt = 0; cnt < ehdr->e_shnum; ++cnt, ++shdr) {
 	const char *name = shstrtab + shdr->sh_name;
 	if (strcmp(name, ".ctors") == 0) {
-	    si->ctors = (unsigned *)(si->base + shdr->sh_offset);
+	    si->ctors = (unsigned *)(si->base + shdr->sh_addr);
 	    si->ctors_count = shdr->sh_size/sizeof(Elf32_Word);
 	}
 	if (strcmp(name, ".dtors") == 0) {
-	    si->dtors = (unsigned *)(si->base + shdr->sh_offset);
+	    si->dtors = (unsigned *)(si->base + shdr->sh_addr);
 	    si->dtors_count = shdr->sh_size/sizeof(Elf32_Word);
 	}
     }
