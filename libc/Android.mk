@@ -388,7 +388,7 @@ libc_arch_static_src_files := \
 
 libc_arch_dynamic_src_files := \
 	arch-arm/bionic/exidx_dynamic.c
-else # !arm
+endif # arm
 
 ifeq ($(TARGET_ARCH),x86)
 libc_common_src_files += \
@@ -426,10 +426,55 @@ libc_arch_static_src_files := \
 	arch-x86/bionic/dl_iterate_phdr_static.c
 
 libc_arch_dynamic_src_files :=
-else # !x86
+endif # x86
 
-endif # !x86
-endif # !arm
+ifeq ($(TARGET_ARCH),mips)
+libc_common_src_files += \
+	bionic/bionic_clone.c \
+	arch-mips/bionic/__get_sp.S \
+	arch-mips/bionic/__get_tls.c \
+	arch-mips/bionic/__set_tls.c \
+	arch-mips/bionic/_exit_with_stack_teardown.S \
+	arch-mips/bionic/_setjmp.S \
+	arch-mips/bionic/atomics_mips.S \
+	arch-mips/bionic/bzero.S \
+	arch-mips/bionic/cacheflush.c \
+	arch-mips/bionic/clone.S \
+	arch-mips/bionic/ffs.S \
+	arch-mips/bionic/memcmp16.S \
+	arch-mips/bionic/pipe.S \
+	arch-mips/bionic/setjmp.S \
+	arch-mips/bionic/sigsetjmp.S \
+	arch-mips/bionic/vfork.S
+
+libc_common_src_files += \
+	arch-mips/string/memset.S \
+	arch-mips/string/memcpy.S \
+	arch-mips/string/mips_strlen.c
+
+libc_common_src_files += \
+	string/bcopy.c \
+	string/memmove.c \
+	string/memcmp.c \
+	string/strcmp.c \
+	string/strcpy.c \
+	string/strncmp.c
+
+libc_common_src_files += \
+	bionic/pthread-atfork.c \
+	bionic/pthread-rwlocks.c \
+	bionic/pthread-timers.c \
+	bionic/ptrace.c
+
+libc_static_common_src_files += \
+	bionic/pthread.c
+
+# this is needed for static versions of libc
+libc_arch_static_src_files := \
+	arch-mips/bionic/dl_iterate_phdr_static.c
+
+libc_arch_dynamic_src_files :=
+endif # mips
 
 # Define some common cflags
 # ========================================================
@@ -439,7 +484,6 @@ libc_common_cflags := \
 		-DUSE_LOCKS 			\
 		-DREALLOC_ZERO_BYTES_FREES 	\
 		-D_LIBC=1 			\
-		-DSOFTFLOAT                     \
 		-DFLOATING_POINT		\
 		-DINET6 \
 		-I$(LOCAL_PATH)/private \
@@ -467,6 +511,7 @@ ifneq ($(BOARD_MALLOC_ALIGNMENT),)
 endif
 
 ifeq ($(TARGET_ARCH),arm)
+  libc_common_cflags += -DSOFTFLOAT
   libc_common_cflags += -fstrict-aliasing
   libc_crt_target_cflags := -mthumb-interwork
   #
@@ -487,12 +532,21 @@ ifeq ($(TARGET_ARCH),arm)
   ifeq ($(ARCH_ARM_HAVE_32_BYTE_CACHE_LINES),true)
     libc_common_cflags += -DHAVE_32_BYTE_CACHE_LINE
   endif
-else # !arm
-  ifeq ($(TARGET_ARCH),x86)
+endif # arm
+
+ifeq ($(TARGET_ARCH),x86)
+    libc_common_cflags += -DSOFTFLOAT
     libc_crt_target_cflags :=
     # TARGET_GLOBAL_CFLAGS from build/core/combo/TARGET_linux-x86.mk sets all required flags.
-  endif # x86
-endif # !arm
+endif # x86
+
+ifeq ($(TARGET_ARCH),mips)
+  ifneq ($(ARCH_MIPS_HAS_FPU),true)
+    libc_common_cflags += -DSOFTFLOAT
+  endif
+  libc_common_cflags += -fstrict-aliasing
+  libc_crt_target_cflags := $(TARGET_GLOBAL_CFLAGS)
+endif # mips 
 
 # Define ANDROID_SMP appropriately.
 ifeq ($(TARGET_CPU_SMP),true)
@@ -527,8 +581,8 @@ libc_crt_target_cflags += -I$(LOCAL_PATH)/private
 # executables)
 # ==========================================================================
 
-ifneq ($(filter arm x86,$(TARGET_ARCH)),)
-# ARM and x86 need crtbegin_so/crtend_so.
+ifneq ($(filter arm x86 mips,$(TARGET_ARCH)),)
+# ARM, x86 and MIPS need crtbegin_so/crtend_so.
 #
 # For x86, the .init section must point to a function that calls all
 # entries in the .ctors section. (on ARM this is done through the
@@ -540,8 +594,8 @@ ifneq ($(filter arm x86,$(TARGET_ARCH)),)
 #
 
 libc_crt_target_so_cflags := $(libc_crt_target_cflags)
-ifeq ($(TARGET_ARCH),x86)
-    # This flag must be added for x86 targets, but not for ARM
+ifneq ($filter x86 mips,$(TARGET_ARCH))
+    # This flag must be added for x86/mips targets, but not for ARM
     libc_crt_target_so_cflags += -fPIC
 endif
 GEN := $(TARGET_OUT_STATIC_LIBRARIES)/crtbegin_so.o
@@ -555,7 +609,7 @@ $(GEN): $(LOCAL_PATH)/arch-$(TARGET_ARCH)/bionic/crtend_so.S
 	@mkdir -p $(dir $@)
 	$(TARGET_CC) $(libc_crt_target_so_cflags) -o $@ -c $<
 ALL_GENERATED_SOURCES += $(GEN)
-endif # TARGET_ARCH == x86 || TARGET_ARCH == arm
+endif # TARGET_ARCH == x86 || TARGET_ARCH == arm || TARGET_ARCH == mips
 
 
 GEN := $(TARGET_OUT_STATIC_LIBRARIES)/crtbegin_static.o
