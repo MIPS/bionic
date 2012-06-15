@@ -108,7 +108,9 @@ static void logSignalSummary(int signum, const siginfo_t* info)
         case SIGBUS:    signame = "SIGBUS";     break;
         case SIGFPE:    signame = "SIGFPE";     break;
         case SIGSEGV:   signame = "SIGSEGV";    break;
+#if defined(SIGSTKFLT)
         case SIGSTKFLT: signame = "SIGSTKFLT";  break;
+#endif
         case SIGPIPE:   signame = "SIGPIPE";    break;
         default:        signame = "???";        break;
     }
@@ -169,6 +171,8 @@ void debugger_init()
     sigaction(SIGBUS, &act, NULL);
     sigaction(SIGFPE, &act, NULL);
     sigaction(SIGSEGV, &act, NULL);
+#if defined(SIGSTKFLT)
     sigaction(SIGSTKFLT, &act, NULL);
+#endif
     sigaction(SIGPIPE, &act, NULL);
 }

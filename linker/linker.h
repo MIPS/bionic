@@ -138,6 +138,15 @@ struct soinfo
     unsigned *ARM_exidx;
     unsigned ARM_exidx_count;
 #endif
+#ifdef ANDROID_MIPS_LINKER
+#if 0
+     /* not yet */
+     unsigned *mips_pltgot
+#endif
+     unsigned mips_symtabno;
+     unsigned mips_local_gotno;
+     unsigned mips_gotsym;
+#endif
 
     unsigned refcount;
     struct link_map linkmap;
@@ -168,7 +177,12 @@ extern soinfo libdl_info;
 #define R_386_JUMP_SLOT  7
 #define R_386_RELATIVE   8
 
-#endif
+#elif defined(ANDROID_MIPS_LINKER)
+
+#define R_MIPS_REL32           3
+#define R_MIPS_JUMP_SLOT       127
+
+#endif /* ANDROID_*_LINKER */
 
 #ifndef DT_INIT_ARRAY
 #define DT_INIT_ARRAY      25
@@ -205,7 +219,7 @@ const char *linker_get_error(void);
 #ifdef ANDROID_ARM_LINKER 
 typedef long unsigned int *_Unwind_Ptr;
 _Unwind_Ptr dl_unwind_find_exidx(_Unwind_Ptr pc, int *pcount);
-#elif defined(ANDROID_X86_LINKER)
+#elif defined(ANDROID_X86_LINKER) || defined(ANDROID_MIPS_LINKER)
 int dl_iterate_phdr(int (*cb)(struct dl_phdr_info *, size_t, void *), void *);
 #endif
 
