@@ -1584,16 +1584,22 @@ int mips_relocate_got(struct soinfo *si)
         sym_name = si->strtab + sym->st_name;
         s = _do_lookup (si, sym_name, &base);
         if (s == NULL) {
-            DL_ERR("%5d In '%s', can't locate symbol %s",
-                  pid, si->name, sym_name);
-            return -1;
-        }
-
-        /* FIXME: is this sufficient?
-         * For reference see NetBSD link loader
-         * http://cvsweb.netbsd.org/bsdweb.cgi/src/libexec/ld.elf_so/arch/mips/mips_reloc.c?rev=1.53&content-type=text/x-cvsweb-markup
-         */
-        *got = base + s->st_value;
+	    /* We only allow an undefined symbol if this is a weak
+	       reference..   */
+	    s = &symtab[g];
+	    if (ELF32_ST_BIND(s->st_info) != STB_WEAK) {
+		DL_ERR("%5d cannot locate '%s'...\n", pid, sym_name);
+		return -1;
+	    }
+	    *got = 0;
+	}
+	else {
+	    /* FIXME: is this sufficient?
+	     * For reference see NetBSD link loader
+	     * http://cvsweb.netbsd.org/bsdweb.cgi/src/libexec/ld.elf_so/arch/mips/mips_reloc.c?rev=1.53&content-type=text/x-cvsweb-markup
+	     */
+	    *got = base + s->st_value;
+	}
     }
     return 0;
 }
