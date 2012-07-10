@@ -80,7 +80,7 @@ __noreturn void __libc_init(uintptr_t *elfdata,
     /* pre-init array. */
     call_array(structors->preinit_array);
 
-#ifndef __i386__
+#if defined(__arm__) || defined(__mips__)
     /* .ctors section initializers, for non-arm-eabi ABIs */
     call_array(structors->ctors_array);
 #endif
@@ -98,6 +98,10 @@ __noreturn void __libc_init(uintptr_t *elfdata,
      */
     if (structors->fini_array)
         __cxa_atexit(__libc_fini,structors->fini_array,NULL);
+#ifdef __mips__
+    /* run .dtors section destructors first */
+    __cxa_atexit(__libc_fini,structors->dtors_array,NULL);
+#endif
 
     exit(slingshot(argc, argv, envp));
 }
