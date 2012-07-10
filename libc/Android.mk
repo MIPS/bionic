@@ -448,6 +448,7 @@ libc_common_src_files += \
 	arch-mips/bionic/clone.S \
 	arch-mips/bionic/ffs.S \
 	arch-mips/bionic/memcmp16.S \
+	arch-mips/bionic/memmove.c \
 	arch-mips/bionic/pipe.S \
 	arch-mips/bionic/setjmp.S \
 	arch-mips/bionic/sigsetjmp.S \
@@ -460,7 +461,6 @@ libc_common_src_files += \
 
 libc_common_src_files += \
 	string/bcopy.c \
-	string/memmove.c \
 	string/memcmp.c \
 	string/strcmp.c \
 	string/strcpy.c \
