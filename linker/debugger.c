@@ -216,7 +216,9 @@ void debugger_signal_handler(int n, siginfo_t* info, void* unused)
         case SIGABRT:
         case SIGFPE:
         case SIGPIPE:
+#ifdef SIGSTKFLT
         case SIGSTKFLT:
+#endif
             (void) tgkill(getpid(), gettid(), n);
             break;
         default:    // SIGILL, SIGBUS, SIGSEGV
