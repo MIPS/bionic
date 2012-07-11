@@ -41,7 +41,7 @@ __bionic_swap(int32_t new_value, volatile int32_t* ptr)
     int32_t status;
     do {
         prev = *ptr;
-        status = __sync_val_compare_and_swap(ptr, prev, new_value);
+        status = __sync_bool_compare_and_swap(ptr, prev, new_value);
     } while (status == 0);
     return prev;
 }
