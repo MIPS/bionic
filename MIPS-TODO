@@ -1,4 +1,0 @@
-TODO:
-
-* Implement bionic_atomic_mips.h (cf ./libc/private/bionic_atomic_x86.h)
-* Fixup libc/kernel/arch-mips/asm/mman.h
