@@ -168,7 +168,7 @@ unsigned bitmask[4096];
     ret name __VA_ARGS__                                                      \
     {                                                                         \
         char errstr[] = "ERROR: " #name " called from the dynamic linker!\n"; \
-        write(2, errstr, sizeof(errstr));                                     \
+        write(2, errstr, sizeof(errstr)-1);                                   \
         abort();                                                              \
     }
 HOODLUM(malloc, void *, (size_t size));
@@ -2377,7 +2377,7 @@ sanitize:
     if(link_image(si, 0)) {
         char errmsg[] = "CANNOT LINK EXECUTABLE\n";
         write(2, __linker_dl_err_buf, strlen(__linker_dl_err_buf));
-        write(2, errmsg, sizeof(errmsg));
+        write(2, errmsg, sizeof(errmsg)-1);
         exit(-1);
     }
 
