@@ -150,7 +150,7 @@ static unsigned bitmask[4096];
     {                                                                           \
         const char* msg = "ERROR: " #name " called from the dynamic linker!\n"; \
          __libc_android_log_write(ANDROID_LOG_FATAL, "linker", msg);            \
-        write(2, msg, sizeof(msg));                                             \
+        write(2, msg, sizeof(msg)-1);                                           \
         abort();                                                                \
     }
 #define UNUSED __attribute__((unused))
@@ -1906,7 +1906,7 @@ sanitize:
     if(soinfo_link_image(si)) {
         char errmsg[] = "CANNOT LINK EXECUTABLE\n";
         write(2, __linker_dl_err_buf, strlen(__linker_dl_err_buf));
-        write(2, errmsg, sizeof(errmsg));
+        write(2, errmsg, sizeof(errmsg)-1);
         exit(-1);
     }
 
