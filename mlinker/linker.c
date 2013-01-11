@@ -1955,6 +1955,7 @@ static int link_image(soinfo *si, unsigned wr_offset)
 {
     unsigned *d;
     Elf32_Phdr *phdr = si->phdr;
+    Elf32_Word dynamic_flags = 0;
     int phnum = si->phnum;
 
     INFO("[ %5d linking %s ]\n", pid, si->name);
@@ -2028,6 +2029,7 @@ static int link_image(soinfo *si, unsigned wr_offset)
                 }
                 DEBUG_DUMP_PHDR(phdr, "PT_DYNAMIC", pid);
                 si->dynamic = (unsigned *) (si->base + phdr->p_vaddr);
+                dynamic_flags = phdr->p_flags;
             } else if (phdr->p_type == PT_GNU_RELRO) {
                 if ((phdr->p_vaddr >= si->size)
                         || ((phdr->p_vaddr + phdr->p_memsz) > si->size)
@@ -2089,10 +2091,10 @@ static int link_image(soinfo *si, unsigned wr_offset)
             si->plt_got = (unsigned *)(si->base + *d);
             break;
         case DT_DEBUG:
-#if !defined(ANDROID_MIPS_LINKER)
             // Set the DT_DEBUG entry to the addres of _r_debug for GDB
-            *d = (int) &_r_debug;
-#endif
+            // if the dynamic table is writable
+            if (dynamic_flags & PF_W)
+                *d = (int) &_r_debug;
             break;
          case DT_RELA:
             DL_ERR("%5d DT_RELA not supported", pid);
