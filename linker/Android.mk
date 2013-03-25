@@ -1,3 +1,5 @@
+ifneq ($(TARGET_ARCH),mips)  # MagicCode uses mlinker instead
+
 LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
@@ -84,3 +86,5 @@ $(linked_module): $(TARGET_CRTBEGIN_STATIC_O) $(all_objects) $(all_libraries) $(
 #
 # end of BUILD_EXECUTABLE hack
 #
+
+endif
