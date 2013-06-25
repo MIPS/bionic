@@ -1176,6 +1176,7 @@ static struct akim_linker_func linker_func = {
 };
 static int (*__akim_load_armlib)(const char*, soinfo *);
 static int (*__akim_unload_lib)(soinfo *);
+static int (*__akim_link_armexe)(soinfo *si, unsigned wr_offset);
 static Elf32_Sym * (*__akim_elf_lookup)(soinfo *, const char*);
 int (*__akim_cback_check)(int, void*, void*);
 static void *get_akim_sym(soinfo *si, const char *name)
@@ -1206,6 +1207,7 @@ static int load_libakim(void)
      }
      __akim_load_armlib = get_akim_sym(si, "__akim_load_armlib");
      __akim_unload_lib  = get_akim_sym(si, "__akim_unload_lib");
+     __akim_link_armexe = get_akim_sym(si, "__akim_link_armexe");
      __akim_elf_lookup  = get_akim_sym(si, "__akim_elf_lookup");
      __akim_cback_check = get_akim_sym(si, "__akim_cback_check");
      return 0;
@@ -1245,18 +1247,20 @@ unload_arm_library(soinfo *si)
 	  return __akim_unload_lib(si);
      return -1;
 }
+static int link_arm_exec(soinfo *si, unsigned wr_offset)
+{
+     if (!__akim_link_armexe && load_libakim())
+	  return -1;
+     if (__akim_link_armexe(si, wr_offset)) {
+	  return -1;
+     }
+     return 0;
+}
 #else
 #define is_arm_solib(BUF, NAME)	(0)
-static soinfo *
-load_arm_library(int fd, const char *name)
-{
-     return NULL;
-}
-static int
-unload_arm_library(soinfo *si)
-{
-     return -1;
-}
+static soinfo *load_arm_library(int fd, const char *name) { return NULL; }
+static int unload_arm_library(soinfo *si) { return -1; }
+static int link_arm_exec(soinfo *si, unsigned wr_offset) { return -1; }
 #endif
 
 static soinfo *
@@ -1818,7 +1822,7 @@ void call_constructors_recursive(soinfo *si)
         TRACE("[ %5d Calling preinit_array @ 0x%08x [%d] for '%s' ]\n",
               pid, (unsigned)si->preinit_array, si->preinit_array_count,
               si->name);
-        call_array(si->preinit_array, si->preinit_array_count, 0);
+	call_array(si->preinit_array, si->preinit_array_count, 0);
         TRACE("[ %5d Done calling preinit_array for '%s' ]\n", pid, si->name);
     } else {
         if (si->preinit_array) {
@@ -2486,11 +2490,20 @@ sanitize:
      */
     int nn;
     si->base = 0;
+    unsigned long exe_ehdr = 0;
     for ( nn = 0; nn < si->phnum; nn++ ) {
-        if (si->phdr[nn].p_type == PT_PHDR) {
-            si->base = (Elf32_Addr) si->phdr - si->phdr[nn].p_vaddr;
-            break;
-        }
+	 if (!exe_ehdr && si->phdr[nn].p_vaddr)
+	      exe_ehdr = si->phdr[nn].p_vaddr - si->phdr[nn].p_offset;
+	 if (si->phdr[nn].p_type == PT_PHDR) {
+	      si->base = (Elf32_Addr) si->phdr - si->phdr[nn].p_vaddr;
+	      break;
+	 }
+    }
+    if (exe_ehdr) {
+	 if (si->base)
+	      exe_ehdr += si->base;
+	 if (((Elf32_Ehdr*)exe_ehdr)->e_machine == EM_ARM)
+	      si->flags |= FLAG_ARMLIB;
     }
     si->dynamic = (unsigned *)-1;
     si->wrprotect_start = 0xffffffff;
@@ -2507,14 +2520,23 @@ sanitize:
         parse_preloads(ldpreload_env, " :");
     }
 
-    if(link_image(si, 0)) {
-        char errmsg[] = "CANNOT LINK EXECUTABLE\n";
-        write(2, __linker_dl_err_buf, strlen(__linker_dl_err_buf));
-        write(2, errmsg, sizeof(errmsg));
-        exit(-1);
+    if (si->flags & FLAG_ARMLIB) {
+	 if (link_arm_exec(si, 0)) {
+	      char errmsg[] = "CANNOT LINK ARM EXECUTABLE\n";
+	      write(2, __linker_dl_err_buf, strlen(__linker_dl_err_buf));
+	      write(2, errmsg, sizeof(errmsg));
+	      exit(-1);
+	 }
+    }
+    else if (link_image(si, 0)) {
+	 char errmsg[] = "CANNOT LINK EXECUTABLE\n";
+	 write(2, __linker_dl_err_buf, strlen(__linker_dl_err_buf));
+	 write(2, errmsg, sizeof(errmsg));
+	 exit(-1);
     }
 
-    call_constructors_recursive(si);
+    if (si->dynamic != (unsigned *)-1)
+	 call_constructors_recursive(si);
 
 #if ALLOW_SYMBOLS_FROM_MAIN
     /* Set somain after we've loaded all the libraries in order to prevent
