@@ -147,6 +147,10 @@ static void log_signal_summary(int signum, const siginfo_t* info) {
     }
 }
 
+#ifdef MAGIC
+extern int (*__akim_cback_check)(int, void*, void*);
+#endif
+
 /*
  * Returns true if the handler for signal "signum" has SA_SIGINFO set.
  */
@@ -176,7 +180,7 @@ static bool have_siginfo(int signum) {
  * Catches fatal signals so we can ask debuggerd to ptrace us before
  * we crash.
  */
-void debuggerd_signal_handler(int n, siginfo_t* info, void*) {
+void debuggerd_signal_handler(int n, siginfo_t* info, void* uc) {
     /*
      * It's possible somebody cleared the SA_SIGINFO flag, which would mean
      * our "info" arg holds an undefined value.
@@ -186,6 +190,12 @@ void debuggerd_signal_handler(int n, siginfo_t* info, void*) {
     }
 
     log_signal_summary(n, info);
+
+#ifdef MAGIC
+    if (__akim_cback_check && __akim_cback_check(n, info, uc) == 0) {
+        return;
+    }
+#endif
 
     pid_t tid = gettid();
     int s = socket_abstract_client(DEBUGGER_SOCKET_NAME, SOCK_STREAM);
