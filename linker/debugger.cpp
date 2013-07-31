@@ -146,6 +146,10 @@ static void logSignalSummary(int signum, const siginfo_t* info) {
     }
 }
 
+#ifdef MAGIC
+extern int (*__akim_cback_check)(int, void*, void*);
+#endif
+
 /*
  * Returns true if the handler for signal "signum" has SA_SIGINFO set.
  */
@@ -185,6 +189,12 @@ void debuggerd_signal_handler(int n, siginfo_t* info, void*) {
     }
 
     logSignalSummary(n, info);
+
+#ifdef MAGIC
+    if (__akim_cback_check && __akim_cback_check(n, info, NULL) == 0) {
+        return;
+    }
+#endif
 
     pid_t tid = gettid();
     int s = socket_abstract_client(DEBUGGER_SOCKET_NAME, SOCK_STREAM);

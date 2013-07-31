@@ -132,9 +132,7 @@ ElfReader::~ElfReader() {
 }
 
 bool ElfReader::Load() {
-  return ReadElfHeader() &&
-         VerifyElfHeader() &&
-         ReadProgramHeader() &&
+  return ReadProgramHeader() &&
          ReserveAddressSpace() &&
          LoadSegments() &&
          FindPhdr();
@@ -184,6 +182,8 @@ bool ElfReader::VerifyElfHeader() {
   if (header_.e_machine !=
 #ifdef ANDROID_ARM_LINKER
       EM_ARM
+#elif defined(MAGIC)
+      EM_MIPS && header_.e_machine != EM_ARM
 #elif defined(ANDROID_MIPS_LINKER)
       EM_MIPS
 #elif defined(ANDROID_X86_LINKER)
@@ -196,6 +196,13 @@ bool ElfReader::VerifyElfHeader() {
 
   return true;
 }
+
+#ifdef MAGIC
+// Test whether ELF file contains ARM machine code.
+bool ElfReader::IsArm() {
+  return header_.e_machine == EM_ARM;
+}
+#endif
 
 // Loads the program header table from an ELF file into a read-only private
 // anonymous mmap-ed block.

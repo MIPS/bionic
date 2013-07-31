@@ -439,6 +439,17 @@ dl_iterate_phdr(int (*cb)(dl_phdr_info *info, size_t size, void *data),
 
 #endif
 
+#ifdef MAGIC
+
+static int (*__akim_load_armlib)(const char*, soinfo *) = NULL;
+static int (*__akim_unload_lib)(soinfo *) = NULL;
+static int (*__akim_link_armexe)(soinfo *si, unsigned wr_offset) = NULL;
+static Elf32_Sym * (*__akim_elf_lookup)(soinfo *, const char*) = NULL;
+
+int (*__akim_cback_check)(int, void*, void*) = NULL;
+
+#endif
+
 static Elf32_Sym* soinfo_elf_lookup(soinfo* si, unsigned hash, const char* name) {
     Elf32_Sym* s;
     Elf32_Sym* symtab = si->symtab;
@@ -594,6 +605,11 @@ done:
  */
 Elf32_Sym* dlsym_handle_lookup(soinfo* si, const char* name)
 {
+#ifdef MAGIC
+    if ((si->flags & FLAG_ARMLIB) && __akim_elf_lookup) {
+        return __akim_elf_lookup(si, name);
+    }
+#endif
     return soinfo_elf_lookup(si, elfhash(name), name);
 }
 
@@ -653,6 +669,13 @@ Elf32_Sym* dladdr_find_symbol(soinfo* si, const void* addr) {
   return NULL;
 }
 
+#ifdef MAGIC
+static Elf32_Sym *find_containing_symbol(const void *addr, soinfo *si) {
+    /* TODO: fix caller to call directly with swapped args */
+    return dladdr_find_symbol(si, addr);
+}
+#endif
+
 #if 0
 static void dump(soinfo* si)
 {
@@ -702,7 +725,107 @@ static int open_library(const char* name) {
   return fd;
 }
 
-static soinfo* load_library(const char* name) {
+#ifdef MAGIC
+
+static soinfo* find_library(const char* name);
+
+#define AKIM_MAGIC	0x414b5000
+struct akim_linker_func {
+    unsigned int magic;
+    soinfo    *  akimsi;
+    soinfo    *(*find_lib  )(const char *);
+    Elf32_Sym *(*lookup_lib)(soinfo *, const char *);
+    soinfo    *(*addr2lib  )(const void *);
+    Elf32_Sym *(*addr2sym  )(const void *, soinfo *);
+
+    /* following fields added for bionic/linker 4.2: */
+    size_t  this_struct_size;      /* sanity check */
+    unsigned int android_version;  /* different layouts of soinfo */
+    size_t  soinfo_size;           /* sanity check */
+};
+static struct akim_linker_func linker_func = {
+    AKIM_MAGIC,
+    NULL,
+    find_library,
+    dlsym_handle_lookup,
+    find_containing_library,
+    find_containing_symbol,  /* TODO: fix swapping of args */
+    sizeof(struct akim_linker_func),
+    43,
+    sizeof(soinfo)
+};
+
+static void *get_akim_sym(soinfo *si, const char *name) {
+    Elf32_Sym *sym;
+    sym = dlsym_handle_lookup(si, name);
+    if (!sym) {
+        DL_ERR("Can't get %s", name);
+        return NULL;
+    }
+    if (si->base != si->load_bias) {
+        DL_ERR("load_bias %x != base %x", si->load_bias, si->base);
+    }
+    return (void*)(sym->st_value + si->load_bias);
+}
+
+static int load_libakim(void) {
+    int (*set_linker)(struct akim_linker_func *);
+    soinfo *si = find_library("libakim.so");
+    if (!si) {
+        DL_ERR("Can't open %s", "libakim.so");
+        return -1;
+    }
+    si->CallConstructors();
+    linker_func.akimsi = si;
+    set_linker = (int (*)(struct akim_linker_func *)) get_akim_sym(si, "__akim_set_linker");
+    if (set_linker(&linker_func)) {
+        DL_ERR("akim set linker failed!");
+        return -1;
+    }
+    __akim_load_armlib = (int (*)(const char*, soinfo *))         get_akim_sym(si, "__akim_load_armlib");
+    __akim_unload_lib  = (int (*)(soinfo *))                      get_akim_sym(si, "__akim_unload_lib");
+    __akim_link_armexe = (int (*)(soinfo *, unsigned))            get_akim_sym(si, "__akim_link_armexe");
+    __akim_elf_lookup  = (Elf32_Sym * (*)(soinfo *, const char*)) get_akim_sym(si, "__akim_elf_lookup");
+    __akim_cback_check = (int (*)(int, void*, void*))             get_akim_sym(si, "__akim_cback_check");
+    return 0;
+}
+
+static soinfo *load_arm_library(const char *name) {
+    char *bname;
+    soinfo *si;
+    if (!__akim_load_armlib && load_libakim())
+        return NULL;
+
+    bname = strrchr(name, '/');
+    si = soinfo_alloc(bname ? bname + 1 : name);
+    if (__akim_load_armlib(name, si)) {
+        DL_ERR("Load ARM %s failed!", name);
+        soinfo_free(si);
+        return NULL;
+    }
+    si->flags |= FLAG_ARMLIB;
+    return si;
+}
+
+static int unload_arm_library(soinfo *si) {
+    if ((si->flags & FLAG_ARMLIB) && __akim_unload_lib)
+        return __akim_unload_lib(si);
+    return -1;
+}
+
+static bool link_arm_exec(soinfo *si) {
+    if (!__akim_link_armexe && load_libakim())
+        return false;
+    if (__akim_link_armexe(si, 0))
+        return false;
+    return true;
+}
+
+#endif  /* MAGIC */
+
+static soinfo* load_library(const char* name, bool *is_arm) {
+    *is_arm = false;
+
     // Open the file.
     int fd = open_library(name);
     if (fd == -1) {
@@ -712,6 +835,15 @@ static soinfo* load_library(const char* name) {
 
     // Read the ELF header and load the segments.
     ElfReader elf_reader(name, fd);
+    if (!(elf_reader.ReadElfHeader() && elf_reader.VerifyElfHeader())) {
+        return NULL;
+    }
+#ifdef MAGIC
+    if (elf_reader.IsArm()) {
+        *is_arm = true;
+        return load_arm_library(name);
+    }
+#endif
     if (!elf_reader.Load()) {
         return NULL;
     }
@@ -766,9 +898,13 @@ static soinfo* find_library_internal(const char* name) {
   }
 
   TRACE("[ '%s' has not been loaded yet.  Locating...]", name);
-  si = load_library(name);
+  bool is_arm;
+  si = load_library(name, &is_arm);
   if (si == NULL) {
     return NULL;
+  }
+  if (is_arm) {
+    return si;
   }
 
   // At this point we know that whatever is loaded @ base is a valid ELF
@@ -797,6 +933,12 @@ static int soinfo_unload(soinfo* si) {
   if (si->ref_count == 1) {
     TRACE("unloading '%s'", si->name);
     si->CallDestructors();
+
+#ifdef MAGIC
+    if (si->flags & FLAG_ARMLIB) {
+      unload_arm_library(si);
+    }
+#endif
 
     for (Elf32_Dyn* d = si->dynamic; d->d_tag != DT_NULL; ++d) {
       if (d->d_tag == DT_NEEDED) {
@@ -1574,12 +1716,21 @@ static bool soinfo_link_image(soinfo* si) {
         }
     }
 
+#ifndef MAGIC
+    /* TODO: restore GNU_RELRO protection, on devices supporting magiccode.
+       This hack of leaving relocated tables writeable is needed by Jul 9 2013
+       libakim patch
+       "Modify the function table directly from *env at arm_jni_onload()"
+       which resolves a problem in floating-point function result registers.
+    */
+
     /* We can also turn on GNU RELRO protection */
     if (phdr_table_protect_gnu_relro(si->phdr, si->phnum, si->load_bias) < 0) {
         DL_ERR("can't enable GNU RELRO protection for \"%s\": %s",
                si->name, strerror(errno));
         return false;
     }
+#endif /* MAGIC */
 
     // If this is a setuid/setgid program, close the security hole described in
     // ftp://ftp.freebsd.org/pub/FreeBSD/CERT/advisories/FreeBSD-SA-02:23.stdio.asc
@@ -1698,12 +1849,30 @@ static Elf32_Addr __linker_init_post_relocation(KernelArgumentBlock& args, Elf32
     si->dynamic = NULL;
     si->ref_count = 1;
 
+#ifdef MAGIC
+    /* Find Elf file header, check if this is an ARM codefile */
+    Elf32_Ehdr *ehdr = reinterpret_cast<Elf32_Ehdr*>(si->base);
+    if (ehdr && ehdr->e_ident[EI_MAG0] == ELFMAG0
+             && ehdr->e_machine        == EM_ARM) {
+      si->flags |= FLAG_ARMLIB;
+    }
+#endif
+
     // Use LD_LIBRARY_PATH and LD_PRELOAD (but only if we aren't setuid/setgid).
     parse_LD_LIBRARY_PATH(ldpath_env);
     parse_LD_PRELOAD(ldpreload_env);
 
     somain = si;
 
+#ifdef MAGIC
+  if (si->flags & FLAG_ARMLIB) {
+    if (!link_arm_exec(si)) {
+        __libc_format_fd(2, "CANNOT LINK ARM EXECUTABLE: %s\n", linker_get_error_buffer());
+        exit(EXIT_FAILURE);
+    }
+    /* All constructor calls were handled within link_arm_exec() */
+  } else
+#endif
     if (!soinfo_link_image(si)) {
         __libc_format_fd(2, "CANNOT LINK EXECUTABLE: %s\n", linker_get_error_buffer());
         exit(EXIT_FAILURE);
