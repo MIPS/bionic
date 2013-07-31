@@ -36,6 +36,7 @@ endif
 
 ifeq ($(TARGET_ARCH),mips)
     LOCAL_CFLAGS += -DANDROID_MIPS_LINKER
+    LOCAL_CFLAGS += -DMAGIC
 endif
 
 LOCAL_MODULE:= linker

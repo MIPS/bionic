@@ -49,10 +49,13 @@ class ElfReader {
   Elf32_Addr load_size() { return load_size_; }
   Elf32_Addr load_bias() { return load_bias_; }
   const Elf32_Phdr* loaded_phdr() { return loaded_phdr_; }
-
- private:
   bool ReadElfHeader();
   bool VerifyElfHeader();
+#ifdef MAGIC
+  bool IsArm();
+#endif
+
+private:
   bool ReadProgramHeader();
   bool ReserveAddressSpace();
   bool LoadSegments();
