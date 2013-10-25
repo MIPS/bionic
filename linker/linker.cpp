@@ -654,19 +654,23 @@ soinfo* find_containing_library(const void* p) {
 
 Elf32_Sym* dladdr_find_symbol(soinfo* si, const void* addr) {
   Elf32_Addr soaddr = reinterpret_cast<Elf32_Addr>(addr) - si->base;
+  Elf32_Sym* wsym = NULL;
 
   // Search the library's symbol table for any defined symbol which
-  // contains this address.
+  // contains this address. Prefer a global symbol over a weak version.
   for (size_t i = 0; i < si->nchain; ++i) {
     Elf32_Sym* sym = &si->symtab[i];
     if (sym->st_shndx != SHN_UNDEF &&
         soaddr >= sym->st_value &&
         soaddr < sym->st_value + sym->st_size) {
-      return sym;
+      if (ELF32_ST_BIND(sym->st_info) != STB_WEAK)
+        return sym;
+      wsym = sym;
     }
   }
 
-  return NULL;
+  /* This is either a weak symbol at addr or NULL if no matching symbol found */
+  return wsym;
 }
 
 #ifdef MAGIC
