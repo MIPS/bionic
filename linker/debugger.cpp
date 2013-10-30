@@ -179,7 +179,7 @@ static bool haveSiginfo(int signum) {
  * Catches fatal signals so we can ask debuggerd to ptrace us before
  * we crash.
  */
-void debuggerd_signal_handler(int n, siginfo_t* info, void*) {
+void debuggerd_signal_handler(int n, siginfo_t* info, void* uc) {
     /*
      * It's possible somebody cleared the SA_SIGINFO flag, which would mean
      * our "info" arg holds an undefined value.
@@ -191,7 +191,7 @@ void debuggerd_signal_handler(int n, siginfo_t* info, void*) {
     logSignalSummary(n, info);
 
 #ifdef MAGIC
-    if (__akim_cback_check && __akim_cback_check(n, info, NULL) == 0) {
+    if (__akim_cback_check && __akim_cback_check(n, info, uc) == 0) {
         return;
     }
 #endif
