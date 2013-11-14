@@ -634,7 +634,7 @@ soinfo* find_containing_library(const void* p) {
 }
 
 Elf32_Sym* dladdr_find_symbol(soinfo* si, const void* addr) {
-  Elf32_Addr soaddr = reinterpret_cast<Elf32_Addr>(addr) - si->base;
+  Elf32_Addr soaddr = reinterpret_cast<Elf32_Addr>(addr) - si->load_bias;
   Elf32_Sym* wsym = NULL;
 
   // Search the library's symbol table for any defined symbol which
