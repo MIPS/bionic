@@ -14,6 +14,7 @@ _LIBC_ARCH_COMMON_SRC_FILES := \
     arch-mips/bionic/pipe.S \
     arch-mips/bionic/setjmp.S \
     arch-mips/bionic/sigsetjmp.S \
+    arch-mips/bionic/syscall.S \
     arch-mips/bionic/vfork.S \
     arch-mips/string/memset.S \
     arch-mips/string/memcpy.S \
