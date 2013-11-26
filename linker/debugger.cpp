@@ -192,9 +192,10 @@ void debuggerd_signal_handler(int n, siginfo_t* info, void* uc) {
     log_signal_summary(n, info);
 
 #ifdef MAGIC
-    if (__akim_cback_check && __akim_cback_check(n, info, uc) == 0) {
+    if (__akim_cback_check && __akim_cback_check(n, info, uc) == 0)
         return;
-    }
+#else
+    (void)uc;
 #endif
 
     pid_t tid = gettid();
