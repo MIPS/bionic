@@ -457,6 +457,9 @@ static Elf32_Sym* soinfo_elf_lookup(soinfo* si, unsigned hash, const char* name)
     TRACE_TYPE(LOOKUP, "SEARCH %s in %s@0x%08x %08x %d",
                name, si->name, si->base, hash, hash % si->nbucket);
 
+    if (!symtab)
+        return NULL;  /* somain's symbols not yet fetched */
+
     for (unsigned n = si->bucket[hash % si->nbucket]; n != 0; n = si->chain[n]) {
         Elf32_Sym* s = symtab + n;
         if (strcmp(strtab + s->st_name, name)) continue;
@@ -762,9 +765,6 @@ static void *get_akim_sym(soinfo *si, const char *name) {
     if (!sym) {
         DL_ERR("Can't get %s", name);
         return NULL;
-    }
-    if (si->base != si->load_bias) {
-        DL_ERR("load_bias %x != base %x", si->load_bias, si->base);
     }
     return (void*)(sym->st_value + si->load_bias);
 }
