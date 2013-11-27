@@ -194,6 +194,8 @@ void debuggerd_signal_handler(int n, siginfo_t* info, void* uc) {
     if (__akim_cback_check && __akim_cback_check(n, info, uc) == 0) {
         return;
     }
+#else
+    (void) uc;  /* suppress unused param msg */
 #endif
 
     pid_t tid = gettid();
