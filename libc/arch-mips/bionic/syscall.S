@@ -32,6 +32,12 @@
     .align 4
     .ent syscall
 
+/*
+ * Caller may only have allocated 16 bytes of stackspace for a0..a3
+ * so some additional space is required to avoid overwriting caller stack
+ */
+#define STACKSIZE 8
+
 syscall:
     .set noreorder
     .cpload $t9
@@ -42,9 +48,11 @@ syscall:
     lw      $a3, 16($sp)
     lw      $t0, 20($sp)
     lw      $t1, 24($sp)
+    subu    $sp, STACKSIZE
     sw      $t0, 16($sp)
     sw      $t1, 20($sp)
     syscall
+    addu    $sp, STACKSIZE
     bnez    $a3, 1f
     move    $a0, $v0
     j       $ra
