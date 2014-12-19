@@ -2111,6 +2111,13 @@ bool soinfo::PrelinkImage() {
           *dp = &_r_debug;
         }
         break;
+      case DT_MIPS_RLD_MAP2:
+        // Set the DT_MIPS_RLD_MAP2 entry to the address of _r_debug for GDB.
+        {
+          r_debug** dp = reinterpret_cast<r_debug**>(reinterpret_cast<ElfW(Addr)>(d) + d->d_un.d_val);
+          *dp = &_r_debug;
+        }
+        break;
 
       case DT_MIPS_RLD_VERSION:
       case DT_MIPS_FLAGS:
