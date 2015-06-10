@@ -19,6 +19,10 @@ LOCAL_SRC_FILES_x86_64  := arch/x86_64/begin.S
 LOCAL_SRC_FILES_mips    := arch/mips/begin.S
 LOCAL_SRC_FILES_mips64  := arch/mips64/begin.S
 
+ifneq (,$(filter $(TARGET_ARCH),mips mips64))
+    LOCAL_CFLAGS += -DMAGIC
+endif
+
 LOCAL_LDFLAGS := \
     -shared \
     -Wl,-Bsymbolic \
