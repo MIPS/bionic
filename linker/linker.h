@@ -92,12 +92,13 @@
 #define FLAG_LINKER     0x00000010 // The linker itself
 #define FLAG_GNU_HASH   0x00000040 // uses gnu hash
 #define FLAG_NEW_SOINFO 0x40000000 // new soinfo format
+#define FLAG_ARMLIB     0x00008000
 
 #define SUPPORTED_DT_FLAGS_1 (DF_1_NOW | DF_1_GLOBAL | DF_1_NODELETE)
 
 #define SOINFO_VERSION 2
 
-#if defined(__work_around_b_19059885__)
+#if defined(__work_around_b_19059885__) || defined(MAGIC)
 #define SOINFO_NAME_LEN 128
 #endif
 
@@ -172,7 +173,7 @@ class VersionTracker {
 struct soinfo {
  public:
   typedef LinkedList<soinfo, SoinfoListAllocator> soinfo_list_t;
-#if defined(__work_around_b_19059885__)
+#if defined(__work_around_b_19059885__) || defined(MAGIC)
  private:
   char old_name_[SOINFO_NAME_LEN];
 #endif
@@ -183,13 +184,13 @@ struct soinfo {
   ElfW(Addr) base;
   size_t size;
 
-#if defined(__work_around_b_19059885__)
+#if defined(__work_around_b_19059885__) || defined(MAGIC)
   uint32_t unused1;  // DO NOT USE, maintained for compatibility.
 #endif
 
   ElfW(Dyn)* dynamic;
 
-#if defined(__work_around_b_19059885__)
+#if defined(__work_around_b_19059885__) || defined(MAGIC)
   uint32_t unused2; // DO NOT USE, maintained for compatibility
   uint32_t unused3; // DO NOT USE, maintained for compatibility
 #endif
@@ -320,6 +321,12 @@ struct soinfo {
   void set_linked();
   void set_linker_flag();
   void set_main_executable();
+
+#if defined(MAGIC)
+  bool is_arm_lib() const;
+  void set_arm_lib();
+  void set_local_group_root(soinfo* local_group_root);
+#endif
 
   void increment_ref_count();
   size_t decrement_ref_count();

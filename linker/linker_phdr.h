@@ -49,6 +49,10 @@ class ElfReader {
   size_t load_size() { return load_size_; }
   ElfW(Addr) load_bias() { return load_bias_; }
   const ElfW(Phdr)* loaded_phdr() { return loaded_phdr_; }
+#if defined(MAGIC)
+  // Test whether ELF file contains ARM machine code.
+  bool IsArm() { return header_.e_machine == EM_ARM; }
+#endif
 
  private:
   bool ReadElfHeader();
