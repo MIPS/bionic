@@ -92,12 +92,13 @@
 #define FLAG_MAPPED_BY_CALLER 0x00000080 // the map is reserved by the caller
                                          // and should not be unmapped
 #define FLAG_NEW_SOINFO       0x40000000 // new soinfo format
+#define FLAG_ARMLIB           0x00008000
 
 #define SUPPORTED_DT_FLAGS_1 (DF_1_NOW | DF_1_GLOBAL | DF_1_NODELETE)
 
 #define SOINFO_VERSION 3
 
-#if defined(__work_around_b_24465209__)
+#if defined(__work_around_b_24465209__) || defined(MAGIC)
 #define SOINFO_NAME_LEN 128
 #endif
 
@@ -183,7 +184,7 @@ struct soinfo {
  public:
   typedef LinkedList<soinfo, SoinfoListAllocator> soinfo_list_t;
   typedef LinkedList<android_namespace_t, NamespaceListAllocator> android_namespace_list_t;
-#if defined(__work_around_b_24465209__)
+#if defined(__work_around_b_24465209__) || defined(MAGIC)
  private:
   char old_name_[SOINFO_NAME_LEN];
 #endif
@@ -194,13 +195,13 @@ struct soinfo {
   ElfW(Addr) base;
   size_t size;
 
-#if defined(__work_around_b_24465209__)
+#if defined(__work_around_b_24465209__) || defined(MAGIC)
   uint32_t unused1;  // DO NOT USE, maintained for compatibility.
 #endif
 
   ElfW(Dyn)* dynamic;
 
-#if defined(__work_around_b_24465209__)
+#if defined(__work_around_b_24465209__) || defined(MAGIC)
   uint32_t unused2; // DO NOT USE, maintained for compatibility
   uint32_t unused3; // DO NOT USE, maintained for compatibility
 #endif
@@ -321,7 +322,7 @@ struct soinfo {
   bool is_gnu_hash() const;
 
   bool inline has_min_version(uint32_t min_version __unused) const {
-#if defined(__work_around_b_24465209__)
+#if defined(__work_around_b_24465209__) || defined(MAGIC)
     return (flags_ & FLAG_NEW_SOINFO) != 0 && version_ >= min_version;
 #else
     return true;
@@ -336,6 +337,12 @@ struct soinfo {
   void set_linker_flag();
   void set_main_executable();
   void set_nodelete();
+
+#if defined(MAGIC)
+  bool is_arm_lib() const;
+  void set_arm_lib();
+  void set_local_group_root(soinfo* local_group_root);
+#endif
 
   void increment_ref_count();
   size_t decrement_ref_count();
@@ -456,6 +463,9 @@ soinfo* get_libdl_info();
 void do_android_get_LD_LIBRARY_PATH(char*, size_t);
 void do_android_update_LD_LIBRARY_PATH(const char* ld_library_path);
 void* do_dlopen(const char* name, int flags, const android_dlextinfo* extinfo, void* caller_addr);
+#if defined(MAGIC)
+  soinfo* do_dlopen(const char* name, int flags);
+#endif
 int do_dlclose(void* handle);
 
 int do_dl_iterate_phdr(int (*cb)(dl_phdr_info* info, size_t size, void* data), void* data);
