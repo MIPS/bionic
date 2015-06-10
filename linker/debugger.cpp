@@ -180,6 +180,10 @@ static void log_signal_summary(int signum, const siginfo_t* info) {
                     signum, signal_name, code_desc, addr_desc, gettid(), thread_name);
 }
 
+#if defined(MAGIC)
+extern int (*__akim_cback_check)(int, void*, void*);
+#endif
+
 /*
  * Returns true if the handler for signal "signum" has SA_SIGINFO set.
  */
@@ -259,12 +263,21 @@ static void send_debuggerd_packet(siginfo_t* info) {
  * Catches fatal signals so we can ask debuggerd to ptrace us before
  * we crash.
  */
-static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void*) {
+static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* uc) {
   // It's possible somebody cleared the SA_SIGINFO flag, which would mean
   // our "info" arg holds an undefined value.
   if (!have_siginfo(signal_number)) {
     info = nullptr;
   }
+
+#if defined(MAGIC)
+  // Let libakim handle the signal if possible
+  if (__akim_cback_check && __akim_cback_check(signal_number, info, uc) == 0) {
+    return;
+  }
+#else
+  (void) uc;  /* suppress unused param msg */
+#endif
 
   log_signal_summary(signal_number, info);
 

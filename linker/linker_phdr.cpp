@@ -163,6 +163,17 @@ bool ElfReader::Read(const char* name, int fd, off64_t file_offset, off64_t file
 }
 
 bool ElfReader::Load(const android_dlextinfo* extinfo) {
+#if defined(MAGIC)
+  bool status;
+  status = ReadElfHeader() && VerifyElfHeader();
+  if (status && !IsArm()) {
+    status = ReadProgramHeaders() &&
+      ReserveAddressSpace(extinfo) &&
+      LoadSegments() &&
+      FindPhdr();
+  }
+  return status;
+#else
   CHECK(did_read_);
   CHECK(!did_load_);
   if (ReserveAddressSpace(extinfo) &&
@@ -172,6 +183,7 @@ bool ElfReader::Load(const android_dlextinfo* extinfo) {
   }
 
   return did_load_;
+#endif
 }
 
 const char* ElfReader::get_string(ElfW(Word) index) const {
@@ -240,10 +252,17 @@ bool ElfReader::VerifyElfHeader() {
     return false;
   }
 
+#if defined(MAGIC)
+  if (header_.e_machine != GetTargetElfMachine() && !IsArm()) {
+    DL_ERR("\"%s\" has unexpected e_machine: %d", name_.c_str(), header_.e_machine);
+    return false;
+  }
+#else
   if (header_.e_machine != GetTargetElfMachine()) {
     DL_ERR("\"%s\" has unexpected e_machine: %d", name_.c_str(), header_.e_machine);
     return false;
   }
+#endif
 
   return true;
 }
