@@ -278,6 +278,10 @@ void SoinfoListAllocator::free(LinkedListEntry<soinfo>* entry) {
 }
 
 static void protect_data(int protection) {
+#if defined(MAGIC)
+  // FIXME: Don't write protect linker data structures for now
+  protection |= PROT_WRITE;
+#endif
   g_soinfo_allocator.protect_all(protection);
   g_soinfo_links_allocator.protect_all(protection);
 }
@@ -420,6 +424,11 @@ static ElfW(Sym)* soinfo_elf_lookup(soinfo* si, unsigned hash, const char* name)
 
   TRACE_TYPE(LOOKUP, "SEARCH %s in %s@%p %x %zd",
              name, si->name, reinterpret_cast<void*>(si->base), hash, hash % si->nbucket);
+
+#if defined(MAGIC)
+  if (!symtab)
+    return NULL;  /* somain's symbols not yet fetched */
+#endif
 
   for (unsigned n = si->bucket[hash % si->nbucket]; n != 0; n = si->chain[n]) {
     ElfW(Sym)* s = symtab + n;
@@ -767,12 +776,133 @@ static int open_library(const char* name) {
 
 template<typename F>
 static void for_each_dt_needed(const soinfo* si, F action) {
+#if defined(MAGIC)
+  if (si->dynamic == nullptr)
+    return;
+#endif
   for (ElfW(Dyn)* d = si->dynamic; d->d_tag != DT_NULL; ++d) {
     if (d->d_tag == DT_NEEDED) {
       action(si->get_string(d->d_un.d_val));
     }
   }
 }
+
+#if defined(MAGIC)
+
+static int (*__akim_load_armlib)(const char*, soinfo *) = NULL;
+static int (*__akim_unload_lib)(soinfo *) = NULL;
+static int (*__akim_link_armexe)(soinfo *si, unsigned wr_offset) = NULL;
+static ElfW(Sym) * (*__akim_elf_lookup)(soinfo *, const char*) = NULL;
+
+int (*__akim_cback_check)(int, void*, void*) = NULL;
+
+ElfW(Sym)* akim_dlsym_handle_lookup(soinfo* si, const char* name) {
+  if ((si->flags & FLAG_ARMLIB) && __akim_elf_lookup) {
+    return __akim_elf_lookup(si, name);
+  }
+
+  soinfo *found;
+  return dlsym_handle_lookup(si, &found, name);
+}
+
+static ElfW(Sym) *find_containing_symbol(const void *addr, soinfo *si) {
+  /* TODO: fix caller to call directly with swapped args */
+  return dladdr_find_symbol(si, addr);
+}
+
+static soinfo* akim_find_library(const char* name);
+
+#define AKIM_MAGIC	0x414b5000
+
+struct akim_linker_func {
+  unsigned int magic;
+  soinfo    *akimsi;
+  soinfo    *(*find_lib)(const char *);
+  ElfW(Sym) *(*lookup_lib)(soinfo *, const char *);
+  soinfo    *(*addr2lib)(const void *);
+  ElfW(Sym) *(*addr2sym)(const void *, soinfo *);
+
+  /* following fields added for bionic/linker 4.2: */
+  size_t  this_struct_size;      /* sanity check */
+  unsigned int android_version;  /* different layouts of soinfo */
+  size_t  soinfo_size;           /* sanity check */
+};
+
+static struct akim_linker_func linker_func = {
+  AKIM_MAGIC,
+  NULL,
+  akim_find_library,
+  akim_dlsym_handle_lookup,
+  find_containing_library,
+  find_containing_symbol,  /* TODO: fix swapping of args */
+  sizeof(struct akim_linker_func),
+  51,  /* Lollipop MR1 */
+  sizeof(soinfo)
+};
+
+static void *get_akim_sym(soinfo *si, const char *name) {
+  ElfW(Sym) *sym;
+  soinfo* found = NULL;
+  sym = dlsym_handle_lookup(si, &found, name);
+  if (!sym) {
+    DL_ERR("Can't get %s", name);
+    return NULL;
+  }
+  return (void*)(sym->st_value + si->load_bias);
+}
+
+static bool load_libakim(void) {
+  soinfo *si = do_dlopen("libakim.so", RTLD_NOW, nullptr);
+  if (si == nullptr) {
+    return false;
+  }
+  linker_func.akimsi = si;
+  int (*set_linker)(struct akim_linker_func *);
+  set_linker = (int (*)(struct akim_linker_func *)) get_akim_sym(si, "__akim_set_linker");
+  if (set_linker(&linker_func)) {
+    DL_ERR("akim set linker failed!");
+    return false;
+  }
+  __akim_load_armlib = (int (*)(const char*, soinfo *))         get_akim_sym(si, "__akim_load_armlib");
+  __akim_unload_lib  = (int (*)(soinfo *))                      get_akim_sym(si, "__akim_unload_lib");
+  __akim_link_armexe = (int (*)(soinfo *, unsigned))            get_akim_sym(si, "__akim_link_armexe");
+  __akim_elf_lookup  = (ElfW(Sym) * (*)(soinfo *, const char*)) get_akim_sym(si, "__akim_elf_lookup");
+  __akim_cback_check = (int (*)(int, void*, void*))             get_akim_sym(si, "__akim_cback_check");
+  return true;
+}
+
+bool load_arm_library(const char *name, struct soinfo *si) {
+  if (!__akim_load_armlib && !load_libakim())
+    return false;
+
+  if (__akim_load_armlib(name, si)) {
+    DL_ERR("Load ARM %s failed!", name);
+    return false;
+  }
+  si->flags |= FLAG_ARMLIB;
+  return true;
+}
+
+static int unload_arm_library(soinfo *si) {
+  if ((si->flags & FLAG_ARMLIB) && __akim_unload_lib)
+    return __akim_unload_lib(si);
+  return -1;
+}
+
+static bool link_arm_exec(soinfo *si) {
+  if (!__akim_link_armexe && load_libakim())
+    return false;
+  protect_data(PROT_READ|PROT_WRITE);
+  bool status = __akim_link_armexe(si, 0) ? false : true;
+  protect_data(PROT_READ);
+  return status;
+}
+
+static soinfo* akim_find_library(const char* name) {
+  return do_dlopen(name, RTLD_NOW|RTLD_GLOBAL, nullptr);
+}
+
+#endif
 
 static soinfo* load_library(LoadTaskList& load_tasks, const char* name, int dlflags, const android_dlextinfo* extinfo) {
   int fd = -1;
@@ -834,6 +964,17 @@ static soinfo* load_library(LoadTaskList& load_tasks, const char* name, int dlfl
   if (si == nullptr) {
     return nullptr;
   }
+
+#if defined(MAGIC)
+  if (elf_reader.IsArm()) {
+    if (!load_arm_library(name, si)) {
+      soinfo_free(si);
+      return nullptr;
+    }
+    return si;
+  }
+#endif
+
   si->base = elf_reader.load_start();
   si->size = elf_reader.load_size();
   si->load_bias = elf_reader.load_bias();
@@ -984,6 +1125,12 @@ static void soinfo_unload(soinfo* si) {
   if (si->ref_count == 1) {
     TRACE("unloading '%s'", si->name);
     si->CallDestructors();
+
+#if defined(MAGIC)
+    if (si->flags & FLAG_ARMLIB) {
+      unload_arm_library(si);
+    }
+#endif
 
     if (si->has_min_version(0)) {
       soinfo* child = nullptr;
@@ -1856,6 +2003,12 @@ static int nullify_closed_stdio() {
 }
 
 bool soinfo::PrelinkImage() {
+#if defined(MAGIC)
+  if ((flags & (FLAG_EXE|FLAG_ARMLIB)) == (FLAG_EXE|FLAG_ARMLIB)) {
+    return true;
+  }
+#endif
+
   /* Extract dynamic section */
   ElfW(Word) dynamic_flags = 0;
   phdr_table_get_dynamic_section(phdr, phnum, load_bias, &dynamic, &dynamic_flags);
@@ -2242,12 +2395,21 @@ bool soinfo::LinkImage(const android_dlextinfo* extinfo) {
   }
 #endif
 
+#if !defined(MAGIC)
+  /* TODO: restore GNU_RELRO protection, on devices supporting magiccode.
+     This hack of leaving relocated tables writeable is needed by Jul 9 2013
+     libakim patch
+     "Modify the function table directly from *env at arm_jni_onload()"
+     which resolves a problem in floating-point function result registers.
+  */
+
   /* We can also turn on GNU RELRO protection */
   if (phdr_table_protect_gnu_relro(phdr, phnum, load_bias) < 0) {
     DL_ERR("can't enable GNU RELRO protection for \"%s\": %s",
            name, strerror(errno));
     return false;
   }
+#endif
 
   /* Handle serializing/sharing the RELRO segment */
   if (extinfo && (extinfo->flags & ANDROID_DLEXT_WRITE_RELRO)) {
@@ -2418,6 +2580,14 @@ static ElfW(Addr) __linker_init_post_relocation(KernelArgumentBlock& args, ElfW(
   parse_LD_LIBRARY_PATH(ldpath_env);
   parse_LD_PRELOAD(ldpreload_env);
 
+#if defined(MAGIC)
+  /* Find Elf file header, check if this is an ARM codefile */
+  if (elf_hdr->e_ident[EI_MAG0] == ELFMAG0 && elf_hdr->e_machine == EM_ARM) {
+      si->flags |= FLAG_ARMLIB;
+      load_libakim();
+    }
+#endif
+
   somain = si;
 
   if (!si->PrelinkImage()) {
@@ -2454,6 +2624,15 @@ static ElfW(Addr) __linker_init_post_relocation(KernelArgumentBlock& args, ElfW(
     si->add_child(needed_library_si[i]);
   }
 
+#if defined(MAGIC)
+  if (si->flags & FLAG_ARMLIB) {
+    if (!link_arm_exec(si)) {
+      __libc_format_fd(2, "CANNOT LINK ARM EXECUTABLE: %s\n", linker_get_error_buffer());
+      exit(EXIT_FAILURE);
+    }
+    /* All constructor calls were handled within link_arm_exec() */
+  } else
+#endif
   if (!si->LinkImage(nullptr)) {
     __libc_format_fd(2, "CANNOT LINK EXECUTABLE: %s\n", linker_get_error_buffer());
     exit(EXIT_FAILURE);

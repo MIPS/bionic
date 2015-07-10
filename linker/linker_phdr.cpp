@@ -133,12 +133,24 @@ ElfReader::~ElfReader() {
 }
 
 bool ElfReader::Load(const android_dlextinfo* extinfo) {
+#if defined(MAGIC)
+  bool status;
+  status = ReadElfHeader() && VerifyElfHeader();
+  if (status && !IsArm()) {
+    status = ReadProgramHeader() &&
+      ReserveAddressSpace(extinfo) &&
+      LoadSegments() &&
+      FindPhdr();
+  }
+  return status;
+#else
   return ReadElfHeader() &&
          VerifyElfHeader() &&
          ReadProgramHeader() &&
          ReserveAddressSpace(extinfo) &&
          LoadSegments() &&
          FindPhdr();
+#endif
 }
 
 bool ElfReader::ReadElfHeader() {
@@ -200,10 +212,17 @@ bool ElfReader::VerifyElfHeader() {
     return false;
   }
 
+#if defined(MAGIC)
+  if (header_.e_machine != ELF_TARG_MACH && !IsArm()) {
+    DL_ERR("\"%s\" has unexpected e_machine: %d", name_, header_.e_machine);
+    return false;
+  }
+#else
   if (header_.e_machine != ELF_TARG_MACH) {
     DL_ERR("\"%s\" has unexpected e_machine: %d", name_, header_.e_machine);
     return false;
   }
+#endif
 
   return true;
 }
