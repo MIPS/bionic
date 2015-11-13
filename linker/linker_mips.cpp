@@ -267,8 +267,8 @@ bool soinfo::mips_check_and_adjust_fp_modes() {
     // Old compilers and some translators don't emit the new abiflags section.
     const char* filename = get_realpath();
     size_t len = strlen(filename);
-    if (len > 4 && (strcmp(filename+len-4, ".dex") == 0 ||
-                    strcmp(filename+len-4, ".oat") == 0   )) {
+    if ((len > 4 && (strcmp(filename+len-4, ".dex") == 0 || strcmp(filename+len-4, ".oat") == 0)) ||
+        (len > 5 && (strcmp(filename+len-5, ".odex") == 0))) {
       // Assume dex2oat is compatible with target
       mips_fpabi = MIPS_ABI_FP_XX;
     } else {
