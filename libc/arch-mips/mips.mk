@@ -18,6 +18,7 @@ libc_bionic_src_files_mips += \
     arch-mips/bionic/setjmp.S \
     arch-mips/bionic/syscall.S \
     arch-mips/bionic/vfork.S \
+    arch-mips/bionic/libgcc_compat.c \
 
 ifndef ARCH_MIPS_REV6
 libc_bionic_src_files_mips += \
