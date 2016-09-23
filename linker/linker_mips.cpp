@@ -88,10 +88,18 @@ bool soinfo::relocate(const VersionTracker& version_tracker,
       }
 
       if (s == nullptr) {
-        // mips does not support relocation with weak-undefined symbols
-        DL_ERR("cannot locate symbol \"%s\" referenced by \"%s\"...",
-               sym_name, get_realpath());
-        return false;
+        // We only allow an undefined symbol if this is a weak reference...
+        s = &symtab_[sym];
+        if (ELF_ST_BIND(s->st_info) != STB_WEAK) {
+          DL_ERR("cannot locate symbol \"%s\" referenced by \"%s\"...",
+                 sym_name, get_realpath());
+          return false;
+        }
+        // mips linker does not support relocation with weak-undefined symbols
+        // for now just ignore these relocations
+        DL_WARN("relocation of weak symbol \"%s\" referenced by \"%s\"...",
+                sym_name, get_realpath());
+        // TODO: add switch case on reloc types
       } else {
         // We got a definition.
         sym_addr = lsi->resolve_symbol_address(s);
