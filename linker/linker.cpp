@@ -1770,8 +1770,14 @@ static void *get_akim_sym(soinfo *si, const char *name) {
   return reinterpret_cast<void*>(sym->st_value + si->load_bias);
 }
 
+
+uintptr_t libakim_base = 0;
+uintptr_t libakim_end = 0;
+
 static bool load_libakim(void) {
   soinfo *si = do_dlopen("libakim.so", RTLD_NOW);
+  libakim_base = si->base;
+  libakim_end = si->base + si->size;
   if (si == nullptr) {
     return false;
   }

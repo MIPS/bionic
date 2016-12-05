@@ -66,10 +66,21 @@ void android_update_LD_LIBRARY_PATH(const char* ld_library_path) {
   do_android_update_LD_LIBRARY_PATH(ld_library_path);
 }
 
+#if defined (MAGIC)
+extern uintptr_t libakim_base;
+extern uintptr_t libakim_end;
+#endif
+
 static void* dlopen_ext(const char* filename, int flags,
                         const android_dlextinfo* extinfo, void* caller_addr) {
   ScopedPthreadMutexLocker locker(&g_dl_mutex);
-  void* result = do_dlopen(filename, flags, extinfo, caller_addr);
+  void* result;
+#if defined (MAGIC)
+  if (libakim_base < reinterpret_cast<uintptr_t>(caller_addr) && reinterpret_cast<uintptr_t>(caller_addr) < libakim_end)
+    result = do_dlopen(filename, flags);
+  else
+#endif
+    result = do_dlopen(filename, flags, extinfo, caller_addr);
   if (result == nullptr) {
     __bionic_format_dlerror("dlopen failed", linker_get_error_buffer());
     return nullptr;
