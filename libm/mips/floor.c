@@ -34,18 +34,21 @@
 
 double floor(double x)
 {
-  double res = 0;
-
-  if((x != x) || fabs(x) >= 0x7fefffffffffffffull)
-  {
-    return x;
-  }
+  double res;
+  int x_int, tmp;
 
   __asm__ (
-    "floor.l.d %0,%1\n\t"
-    "cvt.d.l %0,%0\n"
-    : "+f" (res)
-    : "f" (x)
+    "mfhc1 %[x_int], %[x]     \n\t"
+    "floor.l.d %[res], %[x]   \n\t"
+    "li %[tmp], 1076          \n\t"
+    "ext %[x_int], 20, 11     \n\t"
+    "sub %[x_int], %[tmp]     \n\t"
+    "cvt.d.l %[res], %[res]   \n\t"
+    "bltz %[x_int], l_return  \n\t" /* Integer or NaN or Infinity */
+    "mov.d  %[res], %[x]      \n"
+    "l_return:"
+    : [res] "=f" (res), [tmp] "=r" (tmp), [x_int] "=r" (x_int)
+    : [x] "f" (x)
   );
 
   return res;
@@ -53,18 +56,21 @@ double floor(double x)
 
 float floorf(float x)
 {
-  float res = 0;
-
-  if(isnanf(x) || fabsf(x) >= 0x7f7ffffful)
-  {
-    return x;
-  }
+  float res;
+  int x_int, tmp;
 
   __asm__ (
-    "floor.w.s %0,%1\n\t"
-    "cvt.s.w %0,%0\n"
-    : "+f" (res)
-    : "f" (x)
+    "mfc1 %[x_int], %[x]       \n\t"
+    "floor.w.s %[res], %[x]    \n\t"
+    "li %[tmp], 151            \n\t"
+    "ext %[x_int], 23, 8       \n\t"
+    "sub %[x_int], %[tmp]      \n\t"
+    "cvt.s.w %[res], %[res]    \n\t"
+    "bltz %[x_int], l_returnf  \n\t" /* Integer or NaN or Infinity */
+    "mov.s  %[res], %[x]       \n"
+    "l_returnf:"
+    : [res] "=f" (res), [tmp] "=r" (tmp), [x_int] "=r" (x_int)
+    : [x] "f" (x)
   );
 
   return res;

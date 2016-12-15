@@ -32,38 +32,48 @@
 
 #include "math.h"
 
-float truncf (float x)
-{
-  float z = 0;
-
-  if(isnanf(x) || fabsf(x) >= 0x7f7ffffful)
-    return x;
-
-  __asm__ (
-    "trunc.w.s %0,%1\n"
-    "cvt.s.w %0,%0\n"
-    : "+f" (z)
-    : "f" (x)
-  );
-
-  return z;
-}
-
 double trunc (double x)
 {
-  double z = 0;
-
-  if((x != x) || fabs(x) >= 0x7fefffffffffffffull)
-    return x;
+  double res;
+  int x_int, tmp;
 
   __asm__ (
-    "trunc.l.d %0,%1\n\t"
-    "cvt.d.l %0,%0"
-    : "+f" (z)
-    : "f" (x)
+    "mfhc1 %[x_int], %[x]     \n\t"
+    "trunc.l.d %[res], %[x]   \n\t"
+    "li %[tmp], 1076          \n\t"
+    "ext %[x_int], 20, 11     \n\t"
+    "sub %[x_int], %[tmp]     \n\t"
+    "cvt.d.l %[res], %[res]   \n\t"
+    "bltz %[x_int], l_return  \n\t" /* Integer or NaN or Infinity */
+    "mov.d  %[res], %[x]      \n"
+    "l_return:"
+    : [res] "=f" (res), [tmp] "=r" (tmp), [x_int] "=r" (x_int)
+    : [x] "f" (x)
   );
 
-  return z;
+  return res;
+}
+
+float truncf (float x)
+{
+  float res;
+  int x_int, tmp;
+
+  __asm__ (
+    "mfc1 %[x_int], %[x]       \n\t"
+    "trunc.w.s %[res], %[x]    \n\t"
+    "li %[tmp], 151            \n\t"
+    "ext %[x_int], 23, 8       \n\t"
+    "sub %[x_int], %[tmp]      \n\t"
+    "cvt.s.w %[res], %[res]    \n\t"
+    "bltz %[x_int], l_returnf  \n\t" /* Integer or NaN or Infinity */
+    "mov.s  %[res], %[x]       \n"
+    "l_returnf:"
+    : [res] "=f" (res), [tmp] "=r" (tmp), [x_int] "=r" (x_int)
+    : [x] "f" (x)
+  );
+
+  return res;
 }
 
 #if (LDBL_MANT_DIG == 53)
