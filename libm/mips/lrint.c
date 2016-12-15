@@ -34,12 +34,12 @@
 
 long lrint(double x)
 {
-  double res = 0;
+  double res;
 
   __asm__ (
     "cvt.l.d %0,%1\n\t"
     "cvt.d.l %0,%0\n"
-    : "+f" (res)
+    : "=f" (res)
     : "f" (x)
   );
 
@@ -48,12 +48,12 @@ long lrint(double x)
 
 long lrintf(float x)
 {
-  float res = 0;
+  float res;
 
   __asm__ (
     "cvt.l.s %0,%1\n\t"
     "cvt.s.l %0,%0\n"
-    : "+f" (res)
+    : "=f" (res)
     : "f" (x)
   );
 
