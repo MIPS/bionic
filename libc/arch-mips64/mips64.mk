@@ -2,10 +2,26 @@
 
 libc_bionic_src_files_mips64 += \
     arch-mips/string/memcmp.c \
-    arch-mips/string/memcpy.S \
+    arch-mips/string/memcpy.c \
     arch-mips/string/memset.S \
+    arch-mips/string/memmove.c \
+    arch-mips/string/memchr.c \
+    arch-mips/string/strchr.c \
     arch-mips/string/strcmp.S \
+    arch-mips/string/strcpy.c \
+    arch-mips/string/strncmp.S \
     arch-mips/string/strlen.c \
+    arch-mips/string/strnlen.c \
+
+libc_bionic_src_files_exclude_mips64 += \
+    bionic/strchr.cpp \
+    bionic/strnlen.c \
+
+libc_openbsd_src_files_exclude_mips64 += \
+    upstream-openbsd/lib/libc/string/memchr.c \
+    upstream-openbsd/lib/libc/string/memmove.c \
+    upstream-openbsd/lib/libc/string/strcpy.c \
+    upstream-openbsd/lib/libc/string/strncmp.c \
 
 #
 # Inherently architecture-specific code.
