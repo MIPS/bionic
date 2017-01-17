@@ -2,9 +2,26 @@
 
 libc_bionic_src_files_mips += \
     arch-mips/string/memcmp.c \
-    arch-mips/string/memcpy.S \
+    arch-mips/string/memcpy.c \
     arch-mips/string/memset.S \
+    arch-mips/string/memmove.c \
+    arch-mips/string/memchr.c \
+    arch-mips/string/strchr.c \
     arch-mips/string/strcmp.S \
+    arch-mips/string/strcpy.c \
+    arch-mips/string/strncmp.S \
+    arch-mips/string/strlen.c \
+    arch-mips/string/strnlen.c \
+
+libc_bionic_src_files_exclude_mips += \
+    bionic/strchr.cpp \
+    bionic/strnlen.c \
+
+libc_openbsd_src_files_exclude_mips += \
+    upstream-openbsd/lib/libc/string/memchr.c \
+    upstream-openbsd/lib/libc/string/memmove.c \
+    upstream-openbsd/lib/libc/string/strcpy.c \
+    upstream-openbsd/lib/libc/string/strncmp.c \
 
 #
 # Inherently architecture-specific code.
@@ -19,16 +36,6 @@ libc_bionic_src_files_mips += \
     arch-mips/bionic/syscall.S \
     arch-mips/bionic/vfork.S \
     arch-mips/bionic/libgcc_compat.c \
-
-ifndef ARCH_MIPS_REV6
-libc_bionic_src_files_mips += \
-    arch-mips/string/mips_strlen.c \
-
-else
-libc_bionic_src_files_mips += \
-    arch-mips/string/strlen.c \
-
-endif
 
 libc_crt_target_cflags_mips := \
     $($(my_2nd_arch_prefix)TARGET_GLOBAL_CFLAGS) \
