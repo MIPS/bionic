@@ -26,7 +26,7 @@
  * SUCH DAMAGE.
  */
 
-#if !defined(__LP64__) && __mips_isa_rev >= 5
+#if !defined(__LP64__) && __mips_fpr == 64
 #include <sys/prctl.h>
 #endif
 
@@ -235,10 +235,6 @@ struct mips_elf_abiflags_v0 {
 #define MIPS_ABI_FP_XX     5  // -mfpxx
 #define MIPS_ABI_FP_64A    7  // -mips32r* -mfp64 -mno-odd-spreg
 
-#if __mips_isa_rev >= 5
-static bool mips_fre_mode_on = false;  // have set FRE=1 mode for process
-#endif
-
 bool soinfo::mips_check_and_adjust_fp_modes() {
   mips_elf_abiflags_v0* abiflags = nullptr;
   int mips_fpabi;
@@ -274,7 +270,7 @@ bool soinfo::mips_check_and_adjust_fp_modes() {
     }
   }
   if (!(mips_fpabi == MIPS_ABI_FP_DOUBLE ||
-#if __mips_isa_rev >= 5
+#if __mips_fpr == 64
         mips_fpabi == MIPS_ABI_FP_64A    ||
 #endif
         mips_fpabi == MIPS_ABI_FP_XX       )) {
@@ -283,25 +279,34 @@ bool soinfo::mips_check_and_adjust_fp_modes() {
     return false;
   }
 
-#if __mips_isa_rev >= 5
+#if __mips_fpr == 64
   // Adjust process's FR Emulation mode, if needed
   //
-  // On Mips R5 & R6, Android runs continuously in FR=1 64bit-fpreg mode.
-  // NDK mips32 apps compiled with old compilers generate FP32 code
+  // On Mips R6 cores, the hardware does not support FR=0 32bit-fpreg mode.
+  //   So Android runs continuously in FR=1 64bit-fpreg mode.
+  // On Mips R5 cores, the hardware supports both FR modes.
+  //   FR=1 mode must be used when executing MSA vector ops.
+  //   Most of Android runs in FR=1 mode, but our Linux kernel
+  //   still launches some processes in FR=0 mode.
+  // On Mips R2 cores, the hardware supports both FR modes, but there
+  //   are no MSA vector ops, and Android runs continuosly in FR=0 mode.
+  // NDK mips (32r2) apps compiled with old compilers generate FP32 code
   //   which expects FR=0 32-bit fp registers.
-  // NDK mips32 apps compiled with newer compilers generate modeless
-  //   FPXX code which runs on both FR=0 and FR=1 modes.
-  // Android itself is compiled in FP64A which requires FR=1 mode.
+  // NDK mips (32r2) apps and libs compiled with newer compilers generate
+  //   modeless FPXX code which runs on both FR=0 and FR=1 modes.
+  // R5 & R6 Android are compiled to FP64A which requires FR=1 mode.
   // FP32, FPXX, and FP64A all interlink okay, without dynamic FR mode
   //   changes during calls.  For details, see
   //   http://dmz-portal.mips.com/wiki/MIPS_O32_ABI_-_FR0_and_FR1_Interlinking
-  // Processes containing FR32 FR=0 code are run via kernel software assist,
+  // Processes containing FP32 FR=0 code are run via kernel software assist,
   //   which maps all odd-numbered single-precision reg refs onto the
   //   upper half of the paired even-numbered double-precision reg.
-  // FRE=1 triggers traps to the kernel's emulator on every single-precision
+  //   FRE=1 triggers traps to the kernel's emulator on every single-precision
   //   fp op (for both odd and even-numbered registers).
   // Turning on FRE=1 traps is done at most once per process, simultanously
   //   for all threads of that process, when dlopen discovers FP32 code.
+  //   The kernel may also turn it on at process launch.
+  //   In Android, FRE traps are never turned back off.
   // The kernel repacks threads' registers when FRE mode is turn on or off.
   //   These asynchronous adjustments are wrong if any thread was executing
   //   FPXX code using odd-numbered single-precision regs.
@@ -310,23 +315,30 @@ bool soinfo::mips_check_and_adjust_fp_modes() {
   //   So FRE can always be safely turned on for FP32, anytime.
   // Deferred enhancement: Allow loading of odd-spreg FPXX modules.
 
-  if (mips_fpabi == MIPS_ABI_FP_DOUBLE && !mips_fre_mode_on) {
-    // Turn on FRE mode, which emulates mode-sensitive FR=0 code on FR=1
-    //   register files, by trapping to kernel on refs to single-precision regs
-    if (prctl(PR_SET_FP_MODE, PR_FP_MODE_FR|PR_FP_MODE_FRE)) {
-      DL_ERR("Kernel or cpu failed to set FRE mode required for running \"%s\"",
-             get_realpath());
-      return false;
+  int currently = prctl(PR_GET_FP_MODE);
+
+  if (!(currently & PR_FP_MODE_FRE)) {
+    // FP emulation trapping was off
+    // Turn trapping on if we are now mixing FP32 and FP64A code.
+    // For now, assume any FR=0 process has some FP32 code.
+    // TODO: If R5 process is initially all FPXX code, launch it FR=1,
+    //       or switch to FR=1 without turning on FRE trapping.
+    if ( currently & PR_FP_MODE_FR ? mips_fpabi == MIPS_ABI_FP_DOUBLE
+                                   : mips_fpabi == MIPS_ABI_FP_64A    ) {
+      // Turn on FRE mode, which emulates mode-sensitive FR=0 code on FR=1
+      //   register files, by trapping to kernel on refs to single-precision regs
+      if (prctl(PR_SET_FP_MODE, PR_FP_MODE_FR|PR_FP_MODE_FRE)) {
+        DL_ERR("Kernel or cpu failed to set FRE mode required for running \"%s\"",
+               get_realpath());
+        return false;
+      }
+//    DL_WARN("Using FRE=1 mode to run \"%s\"", get_realpath());
     }
-    DL_WARN("Using FRE=1 mode to run \"%s\"", get_realpath());
-    mips_fre_mode_on = true;  // Avoid future redundant mode-switch calls
-    // FRE mode is never turned back off.
-    // Deferred enhancement:
-    //   Reset FRE mode when dlclose() removes all FP32 modules
   }
 #else
-  // Android runs continuously in FR=0 32bit-fpreg mode.
-#endif  // __mips_isa_rev
+  // Mips32r2: Linker and Android core is compiled for FR=0 32bit-fpreg mode,
+  //   everything runs continuously in FR=0 mode
+#endif  // __mips_fpr
   return true;
 }
 
