@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016 Imagination Technologies.
+ * Copyright (c) 2017 Imagination Technologies.
  *
  * All rights reserved.
  *
@@ -30,52 +30,65 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "math.h"
+#include <private/bionic_asm.h>
 
-double rint(double x)
-{
-  double res;
-  int x_int, tmp;
-
-  __asm__ (
-    "mfhc1 %[x_int], %[x]     \n\t"
-    "cvt.l.d %[res], %[x]     \n\t"
-    "li %[tmp], 1076          \n\t"
-    "ext %[x_int], 20, 11     \n\t"
-    "sub %[x_int], %[tmp]     \n\t"
-    "cvt.d.l %[res], %[res]   \n\t"
-    "bltz %[x_int], l_return  \n\t" /* Integer or NaN or Infinity */
-    "mov.d  %[res], %[x]      \n"
-    "l_return:"
-    : [res] "=f" (res), [tmp] "=r" (tmp), [x_int] "=r" (x_int)
-    : [x] "f" (x)
-  );
-
-  return res;
-}
-
-float rintf(float x)
-{
-  float res;
-  int x_int, tmp;
-
-  __asm__ (
-    "mfc1 %[x_int], %[x]       \n\t"
-    "cvt.w.s %[res], %[x]      \n\t"
-    "li %[tmp], 151            \n\t"
-    "ext %[x_int], 23, 8       \n\t"
-    "sub %[x_int], %[tmp]      \n\t"
-    "cvt.s.w %[res], %[res]    \n\t"
-    "bltz %[x_int], l_returnf  \n\t" /* Integer or NaN or Infinity */
-    "mov.s  %[res], %[x]       \n"
-    "l_returnf:"
-    : [res] "=f" (res), [tmp] "=r" (tmp), [x_int] "=r" (x_int)
-    : [x] "f" (x)
-  );
-
-  return res;
-}
-
-#if (LDBL_MANT_DIG == 53)
-__weak_reference(rint, rintl);
+#ifdef __ANDROID__
+LEAF(rintf, 0)
+#else
+LEAF(rintf)
 #endif
+#if __mips_isa_rev >= 6
+    rint.s  $f0, $f12
+    jr      ra
+#else
+    .set    noreorder
+    .set    nomacro
+
+    mfc1    $3, $f12            /* move high part in G.P. register */
+#if __mips_isa_rev <= 1
+    srl     $2, $3, 23
+    andi    $2, 0xff
+#else
+    ext     $2, $3, 23, 8       /* extract 8 bits exponent field */
+#endif
+    addiu   $2, $2, -127        /* subtract exponent bias */
+    slt     $4, $2, 23
+    beq     $4, $0, l_block_23
+    li      $7, 0x80            /* const to check if inf or NaN */
+
+    srl     $3,  $3,   31
+    sll     $5,  $3,   31
+    lui     $6,  0x4b00         /* exp = 23 (number of mantissa bits) */
+    or      $6,  $5
+    sub.s   $f2, $f12, $f12
+    mtc1    $6,  $f2
+    add.s   $f0, $f2,  $f12
+    bltz    $2,  l_block_less23
+    sub.s   $f0, $f0,  $f2
+l_exit:
+    jr      $31
+    nop
+
+l_block_23:
+    bne     $2,  $7,  l_exit
+    mov.s   $f0, $f12           /* x is integral */
+
+    jr      $31
+    add.s   $f0, $f0, $f0       /* inf or NaN */
+
+l_block_less23:
+    mfc1    $3, $f0
+#if __mips_isa_rev <= 1
+    sll     $4, $3, 1
+    srl     $4, 1
+#else
+    ext     $4, $3, 0, 31
+#endif
+    or      $3, $5, $4
+    jr      $31
+    mtc1    $3, $f0
+
+    .set    macro
+    .set    reorder
+#endif
+END(rintf)
