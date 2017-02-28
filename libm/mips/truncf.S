@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016 Imagination Technologies.
+ * Copyright (c) 2017 Imagination Technologies.
  *
  * All rights reserved.
  *
@@ -30,52 +30,27 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "math.h"
+#include <private/bionic_asm.h>
 
-double ceil(double x)
-{
-  double res;
-  int x_int, tmp;
-
-  __asm__ (
-    "mfhc1 %[x_int], %[x]     \n\t"
-    "ceil.l.d %[res], %[x]    \n\t"
-    "li %[tmp], 1076          \n\t"
-    "ext %[x_int], 20, 11     \n\t"
-    "sub %[x_int], %[tmp]     \n\t"
-    "cvt.d.l %[res], %[res]   \n\t"
-    "bltz %[x_int], l_return  \n\t" /* Integer or NaN or Infinity */
-    "mov.d  %[res], %[x]      \n"
-    "l_return:"
-    : [res] "=f" (res), [tmp] "=r" (tmp), [x_int] "=r" (x_int)
-    : [x] "f" (x)
-  );
-
-  return res;
-}
-
-float ceilf(float x)
-{
-  float res;
-  int x_int, tmp;
-
-  __asm__ (
-    "mfc1 %[x_int], %[x]       \n\t"
-    "ceil.w.s %[res], %[x]     \n\t"
-    "li %[tmp], 151            \n\t"
-    "ext %[x_int], 23, 8       \n\t"
-    "sub %[x_int], %[tmp]      \n\t"
-    "cvt.s.w %[res], %[res]    \n\t"
-    "bltz %[x_int], l_returnf  \n\t" /* Integer or NaN or Infinity */
-    "mov.s  %[res], %[x]       \n"
-    "l_returnf:"
-    : [res] "=f" (res), [tmp] "=r" (tmp), [x_int] "=r" (x_int)
-    : [x] "f" (x)
-  );
-
-  return res;
-}
-
-#if (LDBL_MANT_DIG == 53)
-__weak_reference(ceil, ceill);
+#ifdef __ANDROID__
+LEAF(truncf, 0)
+#else
+LEAF(truncf)
 #endif
+    li         t1,  0x4d800000  /* const to check inf, NaN or integer */
+    trunc.w.s  $f2, $f12        /* Calculate trunc without bothering exceptions */
+    mtc1       t1,  $f0         /* move const to FP reg 0 */
+    abs.s      $f4, $f12        /* Absolute value */
+#if __mips_isa_rev >= 6
+    cmp.lt.s   $f6, $f4, $f0    /* Check if input > const */
+    bc1eqz     $f6, 1f          /* if input > const, return input as it is */
+#else
+    c.olt.s    $f4, $f0
+    bc1f       1f
+#endif
+    cvt.s.w    $f0, $f2         /* Convert to double in $f0 */
+    jr         ra
+1:
+    mov.s      $f0, $f12        /* Return input as is */
+    jr         ra
+END(truncf)
