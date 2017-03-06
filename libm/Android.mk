@@ -328,70 +328,39 @@ LOCAL_SRC_FILES_EXCLUDE_arm64 += \
 libm_mips_arch_files := \
     mips/fenv.c \
     mips/sqrt.c \
+    mips/ceil.S \
+    mips/ceilf.S \
+    mips/floor.S \
+    mips/floorf.S \
+    mips/fma.S \
+    mips/fmaf.S \
+    mips/rint.S \
+    mips/rintf.S \
+    mips/lrint.S \
+    mips/lrintf.S \
+    mips/trunc.S \
+    mips/truncf.S \
 
 libm_mips_arch_exclude_files := \
     upstream-freebsd/lib/msun/src/e_sqrt.c \
     upstream-freebsd/lib/msun/src/e_sqrtf.c \
+    upstream-freebsd/lib/msun/src/s_ceil.c \
+    upstream-freebsd/lib/msun/src/s_ceilf.c \
+    upstream-freebsd/lib/msun/src/s_floorf.c \
+    upstream-freebsd/lib/msun/src/s_floor.c \
+    upstream-freebsd/lib/msun/src/s_fmaf.c \
+    upstream-freebsd/lib/msun/src/s_fma.c \
+    upstream-freebsd/lib/msun/src/s_rint.c \
+    upstream-freebsd/lib/msun/src/s_rintf.c \
+    upstream-freebsd/lib/msun/src/s_lrint.c \
+    upstream-freebsd/lib/msun/src/s_lrintf.c \
+    upstream-freebsd/lib/msun/src/s_trunc.c \
+    upstream-freebsd/lib/msun/src/s_truncf.c \
 
 LOCAL_SRC_FILES_mips += $(libm_mips_arch_files)
 LOCAL_SRC_FILES_mips64 += $(libm_mips_arch_files)
 LOCAL_SRC_FILES_EXCLUDE_mips += $(libm_mips_arch_exclude_files)
 LOCAL_SRC_FILES_EXCLUDE_mips64 += $(libm_mips_arch_exclude_files)
-
-libm_mips_arch_rev2_files := \
-    mips/trunc.c \
-    mips/rint.c \
-    mips/lrint.c \
-    mips/ceil.c \
-    mips/floor.c \
-
-libm_mips_arch_rev2_exclude_files := \
-    upstream-freebsd/lib/msun/src/s_trunc.c \
-    upstream-freebsd/lib/msun/src/s_truncf.c \
-    upstream-freebsd/lib/msun/src/s_rint.c \
-    upstream-freebsd/lib/msun/src/s_rintf.c \
-    upstream-freebsd/lib/msun/src/s_lrint.c \
-    upstream-freebsd/lib/msun/src/s_lrintf.c \
-    upstream-freebsd/lib/msun/src/s_ceil.c \
-    upstream-freebsd/lib/msun/src/s_ceilf.c \
-    upstream-freebsd/lib/msun/src/s_floor.c \
-    upstream-freebsd/lib/msun/src/s_floorf.c \
-
-libm_mips_arch_rev6_files := \
-    mips/fma.c \
-    mips/trunc.c \
-    mips/rint.c \
-    mips/lrint.c \
-    mips/ceil.c \
-    mips/floor.c \
-
-libm_mips_arch_rev6_exclude_files := \
-    upstream-freebsd/lib/msun/src/s_fma.c \
-    upstream-freebsd/lib/msun/src/s_fmaf.c \
-    upstream-freebsd/lib/msun/src/s_trunc.c \
-    upstream-freebsd/lib/msun/src/s_truncf.c \
-    upstream-freebsd/lib/msun/src/s_rint.c \
-    upstream-freebsd/lib/msun/src/s_rintf.c \
-    upstream-freebsd/lib/msun/src/s_lrint.c \
-    upstream-freebsd/lib/msun/src/s_lrintf.c \
-    upstream-freebsd/lib/msun/src/s_ceil.c \
-    upstream-freebsd/lib/msun/src/s_ceilf.c \
-    upstream-freebsd/lib/msun/src/s_floor.c \
-    upstream-freebsd/lib/msun/src/s_floorf.c \
-
-ifeq ($(arch_variant),mips32r6)
-
-LOCAL_SRC_FILES_mips += $(libm_mips_arch_rev6_files)
-LOCAL_SRC_FILES_EXCLUDE_mips += $(libm_mips_arch_rev6_exclude_files)
-
-endif
-
-ifeq ($(arch_variant),mips64r6)
-
-LOCAL_SRC_FILES_mips64 += $(libm_mips_arch_rev6_files)
-LOCAL_SRC_FILES_EXCLUDE_mips64 += $(libm_mips_arch_rev6_exclude_files)
-
-endif
 
 # -----------------------------------------------------------------------------
 # x86
@@ -605,7 +574,6 @@ LOCAL_LDFLAGS_mips   += -Wl,--version-script,$(LOCAL_PATH)/libm.mips.map
 LOCAL_LDFLAGS_mips64 += -Wl,--version-script,$(LOCAL_PATH)/libm.mips64.map
 LOCAL_LDFLAGS_x86    += -Wl,--version-script,$(LOCAL_PATH)/libm.x86.map
 LOCAL_LDFLAGS_x86_64 += -Wl,--version-script,$(LOCAL_PATH)/libm.x86_64.map
-
 
 LOCAL_MODULE := libm
 LOCAL_CLANG := $(libm_clang)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016 Imagination Technologies.
+ * Copyright (c) 2017 Imagination Technologies.
  *
  * All rights reserved.
  *
@@ -30,36 +30,23 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "math.h"
+#include <private/bionic_asm.h>
 
-long lrint(double x)
-{
-  double res;
-
-  __asm__ (
-    "cvt.l.d %0,%1\n\t"
-    "cvt.d.l %0,%0\n"
-    : "=f" (res)
-    : "f" (x)
-  );
-
-  return (long) res;
-}
-
-long lrintf(float x)
-{
-  float res;
-
-  __asm__ (
-    "cvt.l.s %0,%1\n\t"
-    "cvt.s.l %0,%0\n"
-    : "=f" (res)
-    : "f" (x)
-  );
-
-  return (long) res;
-}
-
-#if (LDBL_MANT_DIG == 53)
-__weak_reference(lrint, lrintl);
+ENTRY(floorf)
+    li         t1,  0x4d800000  /* const to check inf, NaN or integer */
+    floor.w.s  $f2, $f12
+    mtc1       t1,  $f0         /* move const to FP reg 0 */
+    abs.s      $f4, $f12        /* Absolute value */
+#if __mips_isa_rev >= 6
+    cmp.lt.s   $f6, $f4, $f0    /* Check if input > const */
+    bc1eqz     $f6, 1f          /* input > const return input as it is */
+#else
+    c.olt.s    $f4, $f0
+    bc1f       1f
 #endif
+    cvt.s.w    $f0, $f2         /* Convert to double in $f0 */
+    jr         ra
+1:
+    mov.s      $f0, $f12        /* Return input as is */
+    jr         ra
+END(floorf)
