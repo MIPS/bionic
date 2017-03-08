@@ -103,15 +103,16 @@ do_bytes (void *a, const void *b, unsigned long len, void *ret)
   return ret;
 }
 
+/* This code is called to copy only remaining bytes within word or doubleword */
 static inline void * __attribute__ ((always_inline))
 do_bytes_remaining (void *a, const void *b, unsigned long len, void *ret)
 {
   unsigned char *x = (unsigned char *) a;
-  
+
   if(len > 0) {
     bitfields_t bw;
     bw.v = *((reg_t*) b);
-  
+
 #if __mips64
     DO_BYTE(x, 0);
     DO_BYTE(x, 1);
@@ -199,7 +200,34 @@ static void *
 unaligned_words (reg_t * a, const reg_t * b,
                  unsigned long words, unsigned long bytes, void *ret)
 {
-  return do_bytes_remaining (a, b, (sizeof (reg_t) * words) + bytes, ret);
+  unsigned long i;
+  unsigned char *x = (unsigned char *) a;
+
+  for (i = 0; i < words; i++) {
+    bitfields_t bw;
+    bw.v = *((reg_t*) b);
+    x = (unsigned char *) a;
+#if __mips64
+    x[0] = bw.b.B0;
+    x[1] = bw.b.B1;
+    x[2] = bw.b.B2;
+    x[3] = bw.b.B3;
+    x[4] = bw.b.B4;
+    x[5] = bw.b.B5;
+    x[6] = bw.b.B6;
+    x[7] = bw.b.B7;
+#else
+    x[0] = bw.b.B0;
+    x[1] = bw.b.B1;
+    x[2] = bw.b.B2;
+    x[3] = bw.b.B3;
+#endif
+    a += 1;
+    b += 1;
+  }
+
+  /* mop up any remaining bytes */
+  return do_bytes_remaining (a, b, bytes, ret);
 }
 #endif /* UNALIGNED_INSTR_SUPPORT */
 #endif /* HW_UNALIGNED_SUPPORT */
