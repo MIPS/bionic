@@ -290,9 +290,11 @@ l_mul_add:
     sltu    $2,  $2,  $16
     subu    $7,  $7,  $2
 l_add_denormalize:
-    lw      $25,  %call16(ilogb)($28)
-    jalr    $25
-    mov.d   $f12, $f26
+    sdc1    $f26, 72(sp)
+    lw      $2,   76(sp)
+    srl     $2,   20
+    andi    $2,   0x7ff               /* extract 11 bit exponent */
+    subu    $2,   1023                /* subtract exponent bias */
 
     sw      $16,   72(sp)
     sw      $7,    76(sp)
@@ -300,7 +302,7 @@ l_add_denormalize:
     slt     $2,    $2,   -1022
     beq     $2,    $0,   l_jump6
     ldc1    $f0,   72(sp)
-    mov.d   $f2,   $f0
+    ldc1    $f2,   72(sp)
     add.d   $f0,   $f26, $f0
     sdc1    $f0,   64(sp)
     mov.d   $f6,   $f0
@@ -327,6 +329,8 @@ l_add_denormalize:
     beq     $4, $6,  l_ldexp_exit
     xor     $6, $8,  $3
 
+.set    macro
+.set    reorder
     addiu   $4,   $5,   1
     srl     $6,   $6,   30
     sltu    $5,   $4,   $5
@@ -339,16 +343,20 @@ l_add_denormalize:
     sw      $3,   68(sp)
     ldc1    $f12, 64(sp)
 l_ldexp_exit:
-    lw      $25, %call16(ldexp)($28)
+    la      $25,  ldexp_mips
+    mov.d   $f0,  $f12
+.set    noreorder
+.set    nomacro
+
     jalr    $25
-    move    $6,  $18
+    move    $6,   $18
 
     b       l_exit
     nop
 
 l_except:
     sdc1    $f22, 72(sp)
-    cfc1    $4,   $31
+    move    $4,   $2
     ori     $4,   (0x4 | 0x1000)
     ctc1    $4,   $31                   /* raise FE_INEXACT eception */
 
@@ -361,9 +369,8 @@ l_except:
     bne     $24,  $0, l_jump0
     ldc1    $f14, 64(sp)
 
-    cfc1    $4, $31
-    ori     $4, (0x8 | 0x2000)
-    ctc1    $4, $31                     /* raise FE_UNDERFLOW eception */
+    ori     $2, (0x8 | 0x2000)
+    ctc1    $2, $31                     /* raise FE_UNDERFLOW eception */
 
     ldc1    $f14, 64(sp)
 l_jump0:
@@ -404,44 +411,64 @@ l_jump3:
     nop
 
 l_jump4:
-    ldc1    $f12, 152(sp)
-    lw      $25,  %call16(ldexp)($28)
+.set    macro
+.set    reorder
+    ldc1    $f0, 152(sp)
+    la      $25, ldexp_mips
+.set    noreorder
+.set    nomacro
+
     jalr    $25
-    subu    $6,   $0, $6
+    subu    $6,  $0, $6
 
     b       l_mul_add
     mov.d   $f20, $f0
 
 l_jump6:
-    lw      $25,  %call16(ldexp)($28)
-    add.d   $f12, $f26, $f0
-    jalr    $25
+.set    macro
+.set    reorder
     move    $6,   $18
+    la      $25, ldexp_mips
+.set    noreorder
+.set    nomacro
+
+    jalr    $25
+    add.d   $f0, $f26, $f0
 
     b       l_exit
     nop
 
 l_jump5:
+.set    macro
+.set    reorder
     ctc1    $16, $31                /* Set rounding mode to original */
 
     move    $6,   $18
     sdc1    $f20, 32(sp)
-    lw      $25,  %call16(ldexp)($28)
+    la      $25, ldexp_mips
+.set    noreorder
+.set    nomacro
+
     jalr    $25
-    mov.d   $f12, $f24
+    mov.d   $f0, $f24
 
     add.d   $f20, $f20, $f28
     b       l_exit
     add.d   $f0,  $f20, $f0
 
 l_jump7:
+.set    macro
+.set    reorder
     ctc1    $16,  $31               /* Set rounding mode to original */
 
     move    $6,   $18
     add.d   $f12, $f22, $f24
-    lw      $25,  %call16(ldexp)($28)
+    la      $25, ldexp_mips
+.set    noreorder
+.set    nomacro
+
     jalr    $25
-    add.d   $f12, $f12, $f26
+    add.d   $f0, $f12, $f26
 
     b       l_exit
     nop
@@ -497,6 +524,80 @@ l_jump14:
     b       l_jump3
     ldc1    $f14, 40(sp)
 
+/* loads exponent into existing float */
+ldexp_mips:
+    sdc1    $f0, 72(sp)
+    lw      $2,  76(sp)
+    srl     $3,  $2, 20
+    andi    $3,  0x7ff               /* extract 11 bit exponent */
+    bne     $3,  $0, normal          /* zero or sub normal */
+    sw      $0,  40(sp)
+
+    lui     $4,  0x4350
+    sw      $4,  44(sp)
+    ldc1    $f12,40(sp)
+    mul.d   $f0, $f12
+    sdc1    $f0, 72(sp)
+    lw      $2,  76(sp)
+    srl     $3,  $2, 20
+    andi    $3,  0x7ff               /* extract 11 bit exponent */
+    sub     $3,  54
+
+normal:
+    sub     $4,  $3, 0x7ff           /* subtract exponent max */
+    beq     $4,  $0, not_finite      /* Check if finite */
+
+    add     $3,  $6                  /* add exp */
+
+    /* overflow  */
+    sub     $4,  $3, 0x7fe
+    bgtz    $4,  overflow
+    nop
+
+    bgtz    $3,  ins_exit            /* normal */
+    nop
+
+    lui     $4,  0x3c90
+    add     $3,  54
+    sw      $4,  44(sp)
+    ldc1    $f12,40(sp)
+    lui     $4,  0x800f
+    ori     $4,  0xffff
+    sll     $3,  20
+    and     $2,  $4
+    or      $2,  $3
+    sw      $2,  76(sp)
+    ldc1    $f0, 72(sp)
+    mul.d   $f0, $f12
+
+    jr      ra
+    nop
+
+ins_exit: /* normal result */
+    lui     $4,  0x800f
+    ori     $4,  0xffff
+    sll     $3,  20
+    and     $2,  $4
+    or      $2,  $3
+    sw      $2,  76(sp)
+    jr      ra
+    ldc1    $f0, 72(sp)
+
+not_finite: /* NaN or inf */
+    jr      ra
+    add.d   $f0, $f0
+
+overflow:
+    lui     $3,  0x800f
+    ori     $3,  0xffff
+    lui     $4,  0x7fe0
+    and     $2,  $3
+    or      $2,  $4
+    sw      $2,  76(sp)
+    ldc1    $f0, 72(sp)
+    jr      ra
+    add.d   $f0, $f0
+
     .set    macro
     .set    reorder
 #else
@@ -543,7 +644,6 @@ l_jump14:
     bne     $2, $0, l_finite
     nop
 
-l_exit1:
     b       l_exit
     mov.d   $f0, $f22
 
@@ -579,17 +679,15 @@ l_finite:
     lui     $14,  0x4350
     mthc1   $14,  $f16
 
-    lui     $15, 0x0010
     lui     $12, 0x800f
     lui     $14, 0x3fe0
     ori     $12, 0xffff
 
     mov.d   $f26, $f20
-    mfhc1   $13,  $f20              /* high word */
+    mfhc1   $13,  $f20               /* high word */
     move    $7,   $0
-    ext     $24,  $13, 0, 31        /* abs */
-    slt     $25,  $24, $15
-    beq     $25,  $0,  l_skip0
+    ext     $24,  $13, 20, 11        /* abs */
+    bne     $24,  $0,  l_skip0
     nop
     mul.d   $f26, $f20, $f16
     mfhc1   $13,  $f26
@@ -603,11 +701,10 @@ l_skip0:
     mthc1   $13, $f26
 
     mov.d   $f24, $f14
-    mfhc1   $13,  $f14              /* high word */
+    mfhc1   $13,  $f14               /* high word */
     move    $7,   $0
-    ext     $24,  $13, 0, 31        /* abs */
-    slt     $25,  $24, $15
-    beq     $25,  $0,  l_skip1
+    ext     $24,  $13, 20, 11        /* abs */
+    bne     $24,  $0,  l_skip1
     nop
     mul.d   $f24, $f14, $f16
     mfhc1   $13,  $f24
@@ -621,11 +718,10 @@ l_skip1:
     mthc1   $13, $f24
 
     mov.d   $f0, $f22
-    mfhc1   $13, $f22               /* high word */
+    mfhc1   $13, $f22                /* high word */
     move    $7,  $0
-    ext     $24, $13, 0, 31         /* abs */
-    slt     $25, $24, $15
-    beq     $25, $0,  l_skip2
+    ext     $24, $13, 20, 11         /* abs */
+    bne     $24, $0,  l_skip2
     nop
     mul.d   $f0, $f22, $f16
     mfhc1   $13, $f0
@@ -719,16 +815,19 @@ l_mul_add:
     sltu    $2,  $2,  $16
     subu    $7,  $7,  $2
 l_add_denormalize:
-    lw      $25,   %call16(ilogb)($28)
-    jalr    $25
-    mov.d   $f12,  $f26
+    mfhc1   $2, $f26
+    ext     $2, $2, 20, 11          /* extract 11 bit exponent */
+    subu    $2, 1023                /* subtract exponent bias */
 
-    mtc1    $16,   $f0
-    addu    $2,    $18,  $2
-    slt     $2,    $2,   -1022
-    beq     $2,    $0,   l_jump6
-    mthc1   $7,    $f0
-    mov.d   $f2,   $f0
+    mtc1    $16, $f0
+    addu    $2,  $18,  $2
+    slt     $2,  $2,   -1022
+    beq     $2,  $0,   l_jump6
+    mthc1   $7,  $f0
+
+    mtc1    $16, $f2
+    mthc1   $7,  $f2
+
     add.d   $f0,   $f26, $f0
     mov.d   $f12,  $f0
     mov.d   $f6,   $f0
@@ -737,9 +836,7 @@ l_add_denormalize:
     sub.d   $f0,   $f2,  $f0
     sub.d   $f26,  $f26, $f6
     add.d   $f0,   $f26, $f0
-    mfc1    $2,    $f0
     mfhc1   $3,    $f0
-    mov.d   $f6,   $f0
     c.eq.d  $fcc4, $f0,  $f16
     bc1t    $fcc4, l_ldexp_exit
     nop
@@ -754,6 +851,8 @@ l_add_denormalize:
     beq     $4, $6,  l_ldexp_exit
     xor     $6, $8,  $3
 
+.set    macro
+.set    reorder
     addiu   $4, $5,  1
     srl     $6, $6,  30
     sltu    $5, $4,  $5
@@ -765,15 +864,18 @@ l_add_denormalize:
     mtc1    $2, $f12
     mthc1   $3, $f12
 l_ldexp_exit:
-    lw      $25, %call16(ldexp)($28)
+    mov.d   $f0, $f12
+    la      $25, ldexp_mips
+.set    noreorder
+.set    nomacro
+
     jalr    $25
     move    $6,  $18
-
     b       l_exit
     nop
 
 l_except:
-    cfc1    $4, $31
+    move    $4, $2
     ori     $4, (0x4 | 0x1000)
     ctc1    $4, $31                     /* raise FE_INEXACT eception */
 
@@ -785,9 +887,8 @@ l_except:
     bne     $24,  $0,  l_jump0
     ldc1    $f14, 64(sp)
 
-    cfc1    $4, $31
-    ori     $4, (0x8 | 0x2000)
-    ctc1    $4, $31                     /* raise FE_UNDERFLOW eception */
+    ori     $2, (0x8 | 0x2000)
+    ctc1    $2, $31                     /* raise FE_UNDERFLOW eception */
 
     ldc1    $f14, 64(sp)
 l_jump0:
@@ -815,7 +916,8 @@ l_jump1:
 
     move    $2,    $0
 l_jump2:
-    beq     $3, $2, l_exit1
+    beq     $3,  $2, l_exit
+    mov.d   $f0, $f22
 
     lui     $2, 0x7ff0
     mtc1    $0, $f14
@@ -827,44 +929,63 @@ l_jump3:
     b       l_exit
     nop
 l_jump4:
-    ldc1    $f12, 72(sp)
-    lw      $25,  %call16(ldexp)($28)
+.set    macro
+.set    reorder
+    ldc1    $f0, 72(sp)
+    la      $25, ldexp_mips
+.set    noreorder
+.set    nomacro
+
     jalr    $25
-    subu    $6,   $0, $6
+    subu    $6, $0, $6
 
     b       l_mul_add
     mov.d   $f20, $f0
 
 l_jump6:
-    lw      $25,  %call16(ldexp)($28)
-    add.d   $f12, $f26, $f0
+.set    macro
+.set    reorder
+    move    $6, $18
+    la      $25, ldexp_mips
+.set    noreorder
+.set    nomacro
+
     jalr    $25
-    move    $6,   $18
+    add.d   $f0, $f26, $f0
 
     b       l_exit
     nop
 
 l_jump5:
+.set    macro
+.set    reorder
     ctc1    $16,  $31               /* Set rounding mode to original */
 
-    move    $6,   $18
-    lw      $25,  %call16(ldexp)($28)
-    sdc1    $f20, 32(sp)
-    jalr    $25
-    mov.d   $f12, $f24
-
     add.d   $f20, $f20, $f28
+    move    $6, $18
+    la      $25, ldexp_mips
+.set    noreorder
+.set    nomacro
+
+    jalr    $25
+    mov.d    $f0, $f24
+
     b       l_exit
     add.d   $f0,  $f20, $f0
 
 l_jump7:
-    ctc1    $16,  $31               /* Set rounding mode to original */
+.set    macro
+.set    reorder
+    ctc1    $16, $31                 /* Set rounding mode to original */
 
-    move    $6,   $18
-    add.d   $f12, $f22, $f24
-    lw      $25,  %call16(ldexp)($28)
+    move    $6,  $18
+    add.d   $f0, $f22, $f24
+    la      $25, ldexp_mips
+.set    noreorder
+.set    nomacro
+
     jalr    $25
-    add.d   $f12, $f12, $f26
+    add.d   $f0, $f0, $f26
 
     b       l_exit
     nop
@@ -874,13 +995,13 @@ l_jump11:
     mthc1   $0,    $f0
     c.lt.d  $fcc6, $f0, $f20
     bc1t    $fcc6, l_jump8
-    li      $3,    1
+    ori     $3,    $0,  1
 
     move    $3,    $0
 l_jump8:
     c.lt.d  $fcc7, $f14, $f0
     bc1t    $fcc7, l_jump9
-    li      $2,    1
+    ori     $2,    $0,   1
 
     move    $2,    $0
 l_jump9:
@@ -920,6 +1041,60 @@ l_jump14:
     mtc1    $0,  $f14
     b       l_jump3
     mthc1   $0,  $f14
+
+/* loads exponent into existing float */
+ldexp_mips:
+    mfhc1   $2,  $f0
+    ext     $3,  $2, 20, 11          /* extract 11 bit exponent */
+    bne     $3,  $0, normal          /* zero or sub normal */
+    mtc1    $0,  $f12
+
+    lui     $4,  0x4350
+    mthc1   $4,  $f12
+    mul.d   $f0, $f12
+    mfhc1   $2,  $f0
+    ext     $3,  $2, 20, 11          /* extract 11 bit exponent */
+    sub     $3,  54
+
+normal:
+    sub     $4,  $3, 0x7ff           /* subtract exponent max */
+    beq     $4,  $0, not_finite      /* Check if finite */
+
+    add     $3,  $6                  /* add exp */
+
+    /* overflow  */
+    sub     $4,  $3, 0x7fe
+    bgtz    $4,  overflow
+    nop
+
+    bgtz    $3,  ins_exit            /* normal */
+    nop
+
+    lui     $4,  0x3c90
+    add     $3,  54
+    mthc1   $4,  $f12
+    ins     $2,  $3, 20, 11          /* insert 11 bit exponent */
+    mthc1   $2,  $f0
+    mul.d   $f0, $f12
+
+    jr      ra
+    nop
+
+ins_exit: /* normal result */
+    ins     $2,  $3, 20, 11          /* insert 11 bit exponent */
+    jr      ra
+    mthc1   $2,  $f0
+
+not_finite: /* NaN or inf */
+    jr      ra
+    add.d   $f0, $f0
+
+overflow:
+    li      $4,  0x7fe
+    ins     $2,  $4, 20, 11          /* insert 11 bit exponent */
+    mthc1   $2,  $f0
+    jr      ra
+    add.d   $f0, $f0
 
     .set    macro
     .set    reorder
