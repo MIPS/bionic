@@ -44,12 +44,23 @@ LEAF(ceil)
     mthc1       t1,  $f0        /* move const to FP reg 0 */
     abs.d       $f4, $f12       /* Absolute value */
     cmp.lt.d    $f6, $f4, $f0   /* Check if input > const */
+    .set    noreorder
+    .set    nomacro
     bc1eqz      $f6, 1f         /* if input > const, return input as it is */
+    sub.d       $f4, $f4
+    cmp.eq.d    $f6, $f4, $f2
+    bc1nez      $f6, 2f         /* Handles +/-0 case */
+    nop
+    jr          ra
     cvt.d.l     $f0, $f2        /* Convert to double in $f0 */
-    jr          ra
 1:
-    mov.d       $f0, $f12       /* Return input as is */
     jr          ra
+    mov.d       $f0, $f12       /* Return input as is */
+2:
+    jr          ra
+    mul.d       $f0, $f2, $f12  /* +/-0 */
+    .set    macro
+    .set    reorder
 #elif __mips_isa_rev == 1
     addiu   sp,   sp,   -8
     sdc1    $f12, 0(sp)
@@ -79,7 +90,7 @@ LEAF(ceil)
     .set    nomacro
     beq     $5,  $0, l_exit
     mov.d   $f0, $f12
-    bgez    $4,  l_exit1
+    blez    $4,  l_exit1
     li      $2,  0x100000
     .set    macro
     .set    reorder
