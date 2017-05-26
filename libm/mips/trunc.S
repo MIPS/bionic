@@ -44,12 +44,23 @@ LEAF(trunc)
     mthc1      t1,  $f0         /* move const to FP reg 0 */
     abs.d      $f4, $f12        /* Absolute value */
     cmp.lt.d   $f6, $f4, $f0    /* Check if input > const */
+    .set    noreorder
+    .set    nomacro
     bc1eqz     $f6, 1f          /* if input > const, return input as it is */
+    sub.d      $f4, $f4
+    cmp.eq.d   $f6, $f4, $f2
+    bc1nez     $f6, 2f          /* Handles +/-0 case */
+    nop
+    jr         ra
     cvt.d.l    $f0, $f2         /* Convert to double in $f0 */
-    jr         ra
 1:
-    mov.d      $f0, $f12        /* Return input as is */
     jr         ra
+    mov.d      $f0, $f12        /* Return input as is */
+2:
+    jr         ra
+    mul.d      $f0, $f2, $f12   /* +/-0 */
+    .set    macro
+    .set    reorder
 #elif __mips_isa_rev == 1
     addiu   sp,   sp, -8
     sdc1    $f12, 0(sp)
@@ -131,7 +142,7 @@ l_exit_block_52:
     jr $31
 
 l_exit_20:
-    and     $2,  $3
+    and     $2,  $4
     sw      $0,  0(sp)
     sw      $2,  4(sp)
     ldc1    $f0, 0(sp)

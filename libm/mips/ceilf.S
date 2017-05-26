@@ -41,16 +41,31 @@ LEAF(ceilf)
     ceil.w.s   $f2, $f12        /* Calculate ceil without bothering exceptions */
     mtc1       t1,  $f0         /* move const to FP reg 0 */
     abs.s      $f4, $f12        /* Absolute value */
+    .set    noreorder
+    .set    nomacro
 #if __mips_isa_rev >= 6
     cmp.lt.s   $f6, $f4, $f0    /* Check if input > const */
     bc1eqz     $f6, 1f          /* if input > const, return input as it is */
+    sub.s      $f4, $f4
+    cmp.eq.s   $f6, $f4, $f2
+    bc1nez     $f6, 2f          /* Handles +/-0 case */
+    nop
 #else
-    c.olt.s    $f4, $f0
-    bc1f       1f
+    c.olt.s    $f4, $f0         /* Check if input > const */
+    bc1f       1f               /* if input > const, return input as it is */
+    sub.s      $f4, $f4
+    c.eq.s     $f4, $f2
+    bc1t       2f               /* Handles +/-0 case */
+    nop
 #endif
+    jr         ra
     cvt.s.w    $f0, $f2         /* Convert to double in $f0 */
-    jr         ra
 1:
-    mov.s      $f0, $f12        /* Return input as is */
     jr         ra
+    mov.s      $f0, $f12        /* Return input as is */
+2:
+    jr         ra
+    mul.s      $f0, $f2, $f12   /* +/-0 */
+    .set    macro
+    .set    reorder
 END(ceilf)
