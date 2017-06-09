@@ -80,6 +80,10 @@ static LinkerTypeAllocator<LinkedListEntry<soinfo>> g_soinfo_links_allocator;
 static LinkerTypeAllocator<android_namespace_t> g_namespace_allocator;
 static LinkerTypeAllocator<LinkedListEntry<android_namespace_t>> g_namespace_list_allocator;
 
+#if defined(MAGIC)
+static android_namespace_t *g_classloader_namespace = nullptr;
+#endif
+
 static const char* const kLdConfigFilePath = "/system/etc/ld.config.txt";
 
 #if defined(__LP64__)
@@ -183,6 +187,9 @@ static bool is_greylisted(android_namespace_t* ns, const char* name, const soinf
     "libui.so",
     "libutils.so",
     "libvorbisidec.so",
+#if defined(MAGIC)
+    "libakim.so",
+#endif
     nullptr
   };
 
@@ -505,6 +512,10 @@ ProtectedDataGuard::~ProtectedDataGuard() {
 }
 
 void ProtectedDataGuard::protect_data(int protection) {
+#if defined(MAGIC)
+    // FIXME: Don't write protect linker data structures for now
+    protection |= PROT_WRITE;
+#endif
   g_soinfo_allocator.protect_all(protection);
   g_soinfo_links_allocator.protect_all(protection);
   g_namespace_allocator.protect_all(protection);
@@ -543,6 +554,10 @@ class TypeBasedAllocator {
     SizeBasedAllocator<sizeof(T)>::free(ptr);
   }
 };
+
+#if defined(MAGIC)
+  bool load_arm_library(const char *name, struct soinfo *si);
+#endif
 
 class LoadTask {
  public:
@@ -635,6 +650,16 @@ class LoadTask {
     if (!elf_reader.Load(extinfo_)) {
       return false;
     }
+
+#if defined(MAGIC)
+    if (elf_reader.IsArm()) {
+      if (!load_arm_library(elf_reader.name(), si_)) {
+        soinfo_free(si_);
+        return false;
+      }
+      return true;
+    }
+#endif
 
     si_->base = elf_reader.load_start();
     si_->size = elf_reader.load_size();
@@ -1114,6 +1139,127 @@ static void for_each_dt_needed(const ElfReader& elf_reader, F action) {
   }
 }
 
+#if defined(MAGIC)
+
+static int (*__akim_load_armlib)(const char*, soinfo *) = NULL;
+static int (*__akim_unload_lib)(soinfo *) = NULL;
+static int (*__akim_link_armexe)(soinfo *si, unsigned wr_offset) = NULL;
+static ElfW(Sym) * (*__akim_elf_lookup)(soinfo *, const char*) = NULL;
+
+int (*__akim_cback_check)(int, void*, void*) = NULL;
+
+const ElfW(Sym)* akim_dlsym_handle_lookup(soinfo* si, const char* name) {
+  if (si->is_arm_lib() && __akim_elf_lookup) {
+    return __akim_elf_lookup(si, name);
+  }
+
+  soinfo *found;
+  return dlsym_handle_lookup(si, &found, name, nullptr);
+}
+
+static ElfW(Sym) *find_containing_symbol(const void *addr, soinfo *si) {
+  /* TODO: fix caller to call directly */
+  return si->find_symbol_by_address(addr);
+}
+
+static soinfo* akim_find_library(const char* name);
+
+#define AKIM_MAGIC 0x414b5000
+
+struct akim_linker_func {
+  unsigned int magic;
+  soinfo    *akimsi;
+  soinfo    *(*find_lib)(const char *);
+  const ElfW(Sym) *(*lookup_lib)(soinfo *, const char *);
+  soinfo    *(*addr2lib)(const void *);
+  ElfW(Sym) *(*addr2sym)(const void *, soinfo *);
+
+  /* following fields added for bionic/linker 4.2: */
+  size_t  this_struct_size;      /* sanity check */
+  unsigned int android_version;  /* different layouts of soinfo */
+  size_t  soinfo_size;           /* sanity check */
+};
+
+static struct akim_linker_func linker_func = {
+  AKIM_MAGIC,
+  NULL,
+  akim_find_library,
+  akim_dlsym_handle_lookup,
+  find_containing_library,
+  find_containing_symbol,  /* TODO: call directly */
+  sizeof(struct akim_linker_func),
+  80,  /* Android O v8.0 */
+  sizeof(soinfo)
+};
+
+static void *get_akim_sym(soinfo *si, const char *name) {
+  const ElfW(Sym) *sym;
+  soinfo* found = NULL;
+  sym = dlsym_handle_lookup(si, &found, name, nullptr);
+  if (!sym) {
+    DL_ERR("Can't get %s", name);
+    return NULL;
+  }
+  return reinterpret_cast<void*>(sym->st_value + si->load_bias);
+}
+
+uintptr_t libakim_base = 0;
+uintptr_t libakim_end = 0;
+
+bool load_libakim(void) {
+  soinfo *si = do_dlopen("libakim.so", RTLD_NOW);
+  libakim_base = si->base;
+  libakim_end = si->base + si->size;
+  if (si == nullptr) {
+    return false;
+  }
+  linker_func.akimsi = si;
+  int (*set_linker)(struct akim_linker_func *);
+  set_linker = reinterpret_cast<int (*)(struct akim_linker_func *)>             (get_akim_sym(si, "__akim_set_linker"));
+  if (set_linker(&linker_func)) {
+    DL_ERR("akim set linker failed!");
+    return false;
+  }
+  __akim_load_armlib = reinterpret_cast<int (*)(const char*, soinfo *)>         (get_akim_sym(si, "__akim_load_armlib"));
+  __akim_unload_lib  = reinterpret_cast<int (*)(soinfo *)>                      (get_akim_sym(si, "__akim_unload_lib"));
+  __akim_link_armexe = reinterpret_cast<int (*)(soinfo *, unsigned)>            (get_akim_sym(si, "__akim_link_armexe"));
+  __akim_elf_lookup  = reinterpret_cast<ElfW(Sym) * (*)(soinfo *, const char*)> (get_akim_sym(si, "__akim_elf_lookup"));
+  __akim_cback_check = reinterpret_cast<int (*)(int, void*, void*)>             (get_akim_sym(si, "__akim_cback_check"));
+  return true;
+}
+
+bool load_arm_library(const char *name, struct soinfo *si) {
+  if (!__akim_load_armlib && !load_libakim())
+    return false;
+
+  if (__akim_load_armlib(name, si)) {
+    DL_ERR("Load ARM %s failed!", name);
+    return false;
+  }
+  si->set_arm_lib();
+  return true;
+}
+
+static int unload_arm_library(soinfo *si) {
+  if (si->is_arm_lib() && __akim_unload_lib)
+    return __akim_unload_lib(si);
+  return -1;
+}
+
+bool link_arm_exec(soinfo *si) {
+  if (!__akim_link_armexe && load_libakim())
+    return false;
+
+  ProtectedDataGuard guard;
+  return !__akim_link_armexe(si, 0);
+}
+
+static soinfo* akim_find_library(const char* name) {
+  return do_dlopen(name, RTLD_NOW|RTLD_GLOBAL);
+}
+
+#endif
+
 static bool find_loaded_library_by_inode(android_namespace_t* ns,
                                          const struct stat& file_stat,
                                          off64_t file_offset,
@@ -1270,6 +1416,11 @@ static bool load_library(android_namespace_t* ns,
       si->set_soname(elf_reader.get_string(d->d_un.d_val));
     }
   }
+
+#if defined(MAGIC)
+  if (g_classloader_namespace == nullptr && elf_reader.IsArm())
+    g_classloader_namespace = ns;
+#endif
 
   for_each_dt_needed(task->get_elf_reader(), [&](const char* name) {
     load_tasks->push_back(LoadTask::create(name, si, task->get_readers_map()));
@@ -1583,7 +1734,11 @@ bool find_libraries(android_namespace_t* ns,
     if (is_dt_needed) {
       needed_by->add_child(si);
 
+#if defined(MAGIC)
+    if(si->is_linked() && !si->is_arm_lib()) {
+#else
       if (si->is_linked()) {
+#endif
         si->increment_ref_count();
       }
     }
@@ -1781,7 +1936,7 @@ static void soinfo_unload(soinfo* soinfos[], size_t count) {
         }
       }
     } else {
-#if !defined(__work_around_b_24465209__)
+#if !(defined(__work_around_b_24465209__) || defined(MAGIC))
       __libc_fatal("soinfo for \"%s\"@%p has no version", si->get_realpath(), si);
 #else
       PRINT("warning: soinfo for \"%s\"@%p has no version", si->get_realpath(), si);
@@ -1825,6 +1980,11 @@ static void soinfo_unload(soinfo* soinfos[], size_t count) {
 
   while ((si = external_unload_list.pop_front()) != nullptr) {
     soinfo_unload(si);
+#if defined(MAGIC)
+      if (si->is_arm_lib()) {
+        unload_arm_library(si);
+      }
+#endif
   }
 }
 
@@ -1870,6 +2030,26 @@ void do_android_get_LD_LIBRARY_PATH(char* buffer, size_t buffer_size) {
 void do_android_update_LD_LIBRARY_PATH(const char* ld_library_path) {
   parse_LD_LIBRARY_PATH(ld_library_path);
 }
+
+#if defined(MAGIC)
+soinfo* do_dlopen(const char* name, int flags) {
+  if ((flags & ~(RTLD_NOW|RTLD_LAZY|RTLD_LOCAL|RTLD_GLOBAL|RTLD_NODELETE|RTLD_NOLOAD)) != 0) {
+    DL_ERR("invalid flags to dlopen: %x", flags);
+    return nullptr;
+  }
+
+  ProtectedDataGuard guard;
+  soinfo* si = nullptr;
+  if (g_classloader_namespace != nullptr)
+    si = find_library(g_classloader_namespace, name, flags, nullptr, nullptr);
+  if (si == nullptr)
+    si = find_library(&g_default_namespace, name, flags, nullptr, nullptr);
+  if (si != nullptr) {
+    si->call_constructors();
+  }
+  return si;
+}
+#endif
 
 static std::string android_dlextinfo_to_string(const android_dlextinfo* info) {
   if (info == nullptr) {
@@ -2820,6 +3000,12 @@ bool soinfo::relocate(const VersionTracker& version_tracker, ElfRelIteratorT&& r
 static soinfo_list_t g_empty_list;
 
 bool soinfo::prelink_image() {
+#if defined(MAGIC)
+  if(is_arm_lib() && is_main_executable()) {
+    return true;
+  }
+#endif
+
   /* Extract dynamic section */
   ElfW(Word) dynamic_flags = 0;
   phdr_table_get_dynamic_section(phdr, phnum, load_bias, &dynamic, &dynamic_flags);
@@ -3375,11 +3561,20 @@ bool soinfo::link_image(const soinfo_list_t& global_group, const soinfo_list_t& 
   }
 #endif
 
+#if !defined(MAGIC)
+  /* TODO: restore GNU_RELRO protection, on devices supporting magiccode.
+     This hack of leaving relocated tables writeable is needed by Jul 9 2013
+     libakim patch
+     "Modify the function table directly from *env at arm_jni_onload()"
+     which resolves a problem in floating-point function result registers.
+  */
+
   // We can also turn on GNU RELRO protection if we're not linking the dynamic linker
   // itself --- it can't make system calls yet, and will have to call protect_relro later.
   if (!is_linker() && !protect_relro()) {
     return false;
   }
+#endif
 
   /* Handle serializing/sharing the RELRO segment */
   if (extinfo && (extinfo->flags & ANDROID_DLEXT_WRITE_RELRO)) {

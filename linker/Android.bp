@@ -57,12 +57,16 @@ cc_binary {
                 "arch/mips/begin.S",
                 "linker_mips.cpp",
             ],
+
+            cflags: ["-DMAGIC"],
         },
         mips64: {
             srcs: [
                 "arch/mips64/begin.S",
                 "linker_mips.cpp",
             ],
+
+            cflags: ["-DMAGIC"],
         },
     },
 

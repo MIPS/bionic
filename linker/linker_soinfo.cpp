@@ -51,6 +51,9 @@ soinfo::soinfo(android_namespace_t* ns, const char* realpath,
 
   if (realpath != nullptr) {
     realpath_ = realpath;
+#if defined(MAGIC)
+    soname_ = basename(realpath_.c_str());
+#endif
   }
 
   flags_ = FLAG_NEW_SOINFO;
@@ -253,6 +256,11 @@ bool soinfo::elf_lookup(SymbolName& symbol_name,
   if (!find_verdef_version_index(this, vi, &verneed)) {
     return false;
   }
+
+#if defined(MAGIC)
+  if (!symtab_)
+    return false;  /* somain's symbols not yet fetched */
+#endif
 
   for (uint32_t n = bucket_[hash % nbucket_]; n != 0; n = chain_[n]) {
     ElfW(Sym)* s = symtab_ + n;
@@ -478,7 +486,11 @@ void soinfo::remove_all_links() {
 }
 
 dev_t soinfo::get_st_dev() const {
+#if defined(MAGIC)
+  if (has_min_version(0) || is_arm_lib()) {
+#else
   if (has_min_version(0)) {
+#endif
     return st_dev_;
   }
 
@@ -486,7 +498,11 @@ dev_t soinfo::get_st_dev() const {
 };
 
 ino_t soinfo::get_st_ino() const {
+#if defined(MAGIC)
+  if (has_min_version(0) || is_arm_lib()) {
+#else
   if (has_min_version(0)) {
+#endif
     return st_ino_;
   }
 
@@ -536,7 +552,7 @@ void soinfo::set_nodelete() {
 }
 
 const char* soinfo::get_realpath() const {
-#if defined(__work_around_b_24465209__)
+#if defined(__work_around_b_24465209__) || defined(MAGIC)
   if (has_min_version(2)) {
     return realpath_.c_str();
   } else {
@@ -548,7 +564,7 @@ const char* soinfo::get_realpath() const {
 }
 
 void soinfo::set_soname(const char* soname) {
-#if defined(__work_around_b_24465209__)
+#if defined(__work_around_b_24465209__) || defined(MAGIC)
   if (has_min_version(2)) {
     soname_ = soname;
   }
@@ -559,7 +575,7 @@ void soinfo::set_soname(const char* soname) {
 }
 
 const char* soinfo::get_soname() const {
-#if defined(__work_around_b_24465209__)
+#if defined(__work_around_b_24465209__) || defined(MAGIC)
   if (has_min_version(2)) {
     return soname_;
   } else {
@@ -674,6 +690,20 @@ void soinfo::set_linker_flag() {
 void soinfo::set_main_executable() {
   flags_ |= FLAG_EXE;
 }
+
+#if defined(MAGIC)
+bool soinfo::is_arm_lib() const {
+  return (flags_ & FLAG_ARMLIB) != 0;
+}
+
+void soinfo::set_arm_lib() {
+  flags_ |= FLAG_ARMLIB;
+}
+
+void soinfo::set_local_group_root(soinfo* local_group_root) {
+  local_group_root_ = local_group_root;
+}
+#endif
 
 void soinfo::increment_ref_count() {
   local_group_root_->ref_count_++;

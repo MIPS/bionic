@@ -50,6 +50,11 @@
 extern void __libc_init_globals(KernelArgumentBlock&);
 extern void __libc_init_AT_SECURE(KernelArgumentBlock&);
 
+#if defined(MAGIC)
+extern bool load_libakim(void);
+extern bool link_arm_exec(soinfo *si);
+#endif
+
 extern "C" void _start();
 
 static ElfW(Addr) get_elf_exec_load_bias(const ElfW(Ehdr)* elf);
@@ -330,6 +335,14 @@ static ElfW(Addr) __linker_init_post_relocation(KernelArgumentBlock& args, ElfW(
   parse_LD_LIBRARY_PATH(ldpath_env);
   parse_LD_PRELOAD(ldpreload_env);
 
+#if defined(MAGIC)
+  /* Find Elf file header, check if this is an ARM codefile */
+  if (elf_hdr->e_ident[EI_MAG0] == ELFMAG0 && elf_hdr->e_machine == EM_ARM) {
+      si->set_arm_lib();
+      load_libakim();
+    }
+#endif
+
   somain = si;
 
   init_default_namespace(executable_path);
@@ -371,6 +384,19 @@ static ElfW(Addr) __linker_init_post_relocation(KernelArgumentBlock& args, ElfW(
                       true /* search_linked_namespaces */)) {
     __libc_fatal("CANNOT LINK EXECUTABLE \"%s\": %s", g_argv[0], linker_get_error_buffer());
   } else if (needed_libraries_count == 0) {
+#if defined(MAGIC)
+    if (si->is_arm_lib()) {
+      if (!link_arm_exec(si)) {
+        __libc_format_fd(2, "CANNOT LINK ARM EXECUTABLE: %s\n", linker_get_error_buffer());
+        exit(EXIT_FAILURE);
+      }
+      si->set_local_group_root(soinfo_list_t::make_list(si).front());
+      if (si->get_local_group_root() == nullptr) {
+        si->set_local_group_root(si);
+      }
+      /* All constructor calls were handled within link_arm_exec() */
+    } else
+#endif
     if (!si->link_image(g_empty_list, soinfo_list_t::make_list(si), nullptr)) {
       __libc_fatal("CANNOT LINK EXECUTABLE \"%s\": %s", g_argv[0], linker_get_error_buffer());
     }

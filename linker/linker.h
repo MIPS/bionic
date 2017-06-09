@@ -111,6 +111,9 @@ void* do_dlopen(const char* name,
                 int flags,
                 const android_dlextinfo* extinfo,
                 const void* caller_addr);
+#if defined(MAGIC)
+  soinfo* do_dlopen(const char* name, int flags);
+#endif
 
 int do_dlclose(void* handle);
 
