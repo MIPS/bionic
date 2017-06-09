@@ -54,6 +54,10 @@ class ElfReader {
   const ElfW(Dyn)* dynamic() const { return dynamic_; }
   const char* get_string(ElfW(Word) index) const;
   bool is_mapped_by_caller() const { return mapped_by_caller_; }
+#if defined(MAGIC)
+  // Test whether ELF file contains ARM machine code.
+  bool IsArm() const { return header_.e_machine == EM_ARM; }
+#endif
 
  private:
   bool ReadElfHeader();

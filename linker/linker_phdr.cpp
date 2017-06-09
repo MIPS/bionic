@@ -156,7 +156,11 @@ bool ElfReader::Read(const char* name, int fd, off64_t file_offset, off64_t file
   file_size_ = file_size;
 
   if (ReadElfHeader() &&
-      VerifyElfHeader() &&
+#if defined(MAGIC)
+      (phdr_table_ != nullptr || ReadProgramHeaders()) &&
+#else
+       ReadProgramHeaders() &&
+#endif
       ReadProgramHeaders() &&
       ReadSectionHeaders() &&
       ReadDynamicSection()) {
@@ -167,6 +171,16 @@ bool ElfReader::Read(const char* name, int fd, off64_t file_offset, off64_t file
 }
 
 bool ElfReader::Load(const android_dlextinfo* extinfo) {
+#if defined(MAGIC)
+  did_load_ = ReadElfHeader() && VerifyElfHeader();
+  if (did_load_ && !IsArm()) {
+      did_load_ = (phdr_table_!=nullptr || ReadProgramHeaders()) &&
+      ReserveAddressSpace(extinfo) &&
+      LoadSegments() &&
+      FindPhdr();
+  }
+  return did_load_;
+#else
   CHECK(did_read_);
   if (did_load_) {
     return true;
@@ -178,6 +192,7 @@ bool ElfReader::Load(const android_dlextinfo* extinfo) {
   }
 
   return did_load_;
+#endif
 }
 
 const char* ElfReader::get_string(ElfW(Word) index) const {
@@ -202,6 +217,7 @@ bool ElfReader::ReadElfHeader() {
   return true;
 }
 
+#if !defined(MAGIC)
 static const char* EM_to_string(int em) {
   if (em == EM_386) return "EM_386";
   if (em == EM_AARCH64) return "EM_AARCH64";
@@ -210,6 +226,7 @@ static const char* EM_to_string(int em) {
   if (em == EM_X86_64) return "EM_X86_64";
   return "EM_???";
 }
+#endif
 
 bool ElfReader::VerifyElfHeader() {
   if (memcmp(header_.e_ident, ELFMAG, SELFMAG) != 0) {
@@ -255,11 +272,18 @@ bool ElfReader::VerifyElfHeader() {
     return false;
   }
 
+#if defined(MAGIC)
+  if (header_.e_machine != GetTargetElfMachine() && !IsArm()) {
+    DL_ERR("\"%s\" has unexpected e_machine: %d", name_.c_str(), header_.e_machine);
+    return false;
+  }
+#else
   if (header_.e_machine != GetTargetElfMachine()) {
     DL_ERR("\"%s\" has unexpected e_machine: %d (%s)", name_.c_str(), header_.e_machine,
            EM_to_string(header_.e_machine));
     return false;
   }
+#endif
 
   if (header_.e_shentsize != sizeof(ElfW(Shdr))) {
     // Fail if app is targeting Android O or above
