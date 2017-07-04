@@ -153,7 +153,11 @@ bool ElfReader::Read(const char* name, int fd, off64_t file_offset, off64_t file
 
   if (ReadElfHeader() &&
       VerifyElfHeader() &&
+#if defined(MAGIC)
+      (phdr_table_!=nullptr || ReadProgramHeaders()) &&
+#else
       ReadProgramHeaders() &&
+#endif
       ReadSectionHeaders() &&
       ReadDynamicSection()) {
     did_read_ = true;
@@ -167,7 +171,7 @@ bool ElfReader::Load(const android_dlextinfo* extinfo) {
   bool status;
   status = ReadElfHeader() && VerifyElfHeader();
   if (status && !IsArm()) {
-    status = ReadProgramHeaders() &&
+    status = (phdr_table_!=nullptr || ReadProgramHeaders()) &&
       ReserveAddressSpace(extinfo) &&
       LoadSegments() &&
       FindPhdr();
