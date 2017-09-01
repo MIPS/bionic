@@ -306,11 +306,16 @@ static soinfo* __libdl_info = nullptr;
 soinfo* get_libdl_info(const char* linker_path,
                        const soinfo& linker_si,
                        const link_map& linker_map) {
+#if !defined(__mips__)
   CHECK((linker_si.flags_ & FLAG_GNU_HASH) != 0);
+#endif
 
   if (__libdl_info == nullptr) {
     __libdl_info = new (__libdl_info_buf) soinfo(&g_default_namespace, linker_path, nullptr, 0, 0);
-    __libdl_info->flags_ |= (FLAG_LINKED | FLAG_GNU_HASH);
+    __libdl_info->flags_ |= FLAG_LINKED;
+#if !defined(__mips__)
+    __libdl_info->flags_ |= FLAG_GNU_HASH;
+#endif
     __libdl_info->strtab_ = linker_si.strtab_;
     __libdl_info->symtab_ = linker_si.symtab_;
     __libdl_info->load_bias = linker_si.load_bias;
@@ -321,6 +326,10 @@ soinfo* get_libdl_info(const char* linker_path,
     __libdl_info->gnu_bloom_filter_ = linker_si.gnu_bloom_filter_;
     __libdl_info->gnu_bucket_ = linker_si.gnu_bucket_;
     __libdl_info->gnu_chain_ = linker_si.gnu_chain_;
+    __libdl_info->nbucket_ = linker_si.nbucket_;
+    __libdl_info->nchain_ = linker_si.nchain_;
+    __libdl_info->bucket_ = linker_si.bucket_;
+    __libdl_info->chain_ = linker_si.chain_;
 
     __libdl_info->ref_count_ = 1;
     __libdl_info->strtab_size_ = linker_si.strtab_size_;
