@@ -30,9 +30,10 @@
 
 /*
  * The caller is only required to allocate 16 bytes of stack for a0-a3.
- * syscall has up to 6 arguments, so we need space for the extra two arguments.
+ * syscall has up to 7 arguments, so we need space for the extra three arguments.
+ * This equals to 12 additional bytes, but set 16 for proper stack alignment.
  */
-#define STACKSIZE 2*4
+#define STACKSIZE 4*4
 
 ENTRY(syscall)
     .set noreorder
@@ -44,9 +45,11 @@ ENTRY(syscall)
     lw      a3, 16(sp)
     lw      t0, 20(sp)
     lw      t1, 24(sp)
+    lw      t2, 28(sp)
     subu    sp, STACKSIZE
     sw      t0, 16(sp)
     sw      t1, 20(sp)
+    sw      t2, 24(sp)
     syscall
     addu    sp, STACKSIZE
     bnez    a3, 1f
