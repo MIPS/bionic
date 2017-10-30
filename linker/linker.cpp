@@ -1781,6 +1781,11 @@ bool find_libraries(android_namespace_t* ns,
     if (!si->is_linked() && !si->prelink_image()) {
       return false;
     }
+#if defined(MAGIC)
+    if(si->is_arm_lib() && !si->arm_post_link()) {
+      return false;
+    }
+#endif
   }
 
   // Step 4: Add LD_PRELOADed libraries to the global group for
@@ -2998,6 +3003,46 @@ bool soinfo::relocate(const VersionTracker& version_tracker, ElfRelIteratorT&& r
 
 // An empty list of soinfos
 static soinfo_list_t g_empty_list;
+
+#if defined(MAGIC)
+bool soinfo::arm_post_link() {
+  /* Extract dynamic section */
+  ElfW(Word) dynamic_flags = 0;
+  phdr_table_get_dynamic_section(phdr, phnum, load_bias, &dynamic, &dynamic_flags);
+
+  /* We can't log anything until the linker is relocated */
+  bool relocating_linker = (flags_ & FLAG_LINKER) != 0;
+  if (!relocating_linker) {
+    INFO("[ Linking \"%s\" ]", get_realpath());
+    DEBUG("si->base = %p si->flags = 0x%08x", reinterpret_cast<void*>(base), flags_);
+  }
+
+  if (dynamic == nullptr) {
+    if (!relocating_linker) {
+      DL_ERR("missing PT_DYNAMIC in \"%s\"", get_realpath());
+    }
+    return false;
+  } else {
+    if (!relocating_linker) {
+      DEBUG("dynamic = %p", dynamic);
+    }
+  }
+
+  // second pass - parse entries relying on strtab
+  for (ElfW(Dyn)* d = dynamic; d->d_tag != DT_NULL; ++d) {
+    switch (d->d_tag) {
+      case DT_SONAME:
+        set_soname(get_string(d->d_un.d_val));
+        break;
+      case DT_RUNPATH:
+        set_dt_runpath(get_string(d->d_un.d_val));
+        break;
+    }
+  }
+
+  return true;
+}
+#endif
 
 bool soinfo::prelink_image() {
 #if defined(MAGIC)

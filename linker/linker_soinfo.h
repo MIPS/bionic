@@ -248,6 +248,7 @@ struct soinfo {
   bool is_arm_lib() const;
   void set_arm_lib();
   void set_local_group_root(soinfo* local_group_root);
+  bool arm_post_link();
 #endif
 
   void increment_ref_count();

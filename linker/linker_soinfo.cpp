@@ -51,9 +51,6 @@ soinfo::soinfo(android_namespace_t* ns, const char* realpath,
 
   if (realpath != nullptr) {
     realpath_ = realpath;
-#if defined(MAGIC)
-    soname_ = basename(realpath_.c_str());
-#endif
   }
 
   flags_ = FLAG_NEW_SOINFO;
