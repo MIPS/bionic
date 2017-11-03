@@ -646,20 +646,25 @@ class LoadTask {
   }
 
   bool load() {
-    ElfReader& elf_reader = get_elf_reader();
-    if (!elf_reader.Load(extinfo_)) {
-      return false;
-    }
-
 #if defined(MAGIC)
-    if (elf_reader.IsArm()) {
-      if (!load_arm_library(elf_reader.name(), si_)) {
+    if (si_->is_arm_lib()) {
+      ElfReader *elf_reader = si_->get_elf_reader();
+
+      if (!elf_reader->Load(extinfo_)) {
+        return false;
+      }
+
+      if (!load_arm_library(elf_reader->name(), si_)) {
         soinfo_free(si_);
         return false;
       }
       return true;
     }
 #endif
+    ElfReader& elf_reader = get_elf_reader();
+    if (!elf_reader.Load(extinfo_)) {
+      return false;
+    }
 
     si_->base = elf_reader.load_start();
     si_->size = elf_reader.load_size();
@@ -1236,7 +1241,6 @@ bool load_arm_library(const char *name, struct soinfo *si) {
     DL_ERR("Load ARM %s failed!", name);
     return false;
   }
-  si->set_arm_lib();
   return true;
 }
 
@@ -1418,8 +1422,13 @@ static bool load_library(android_namespace_t* ns,
   }
 
 #if defined(MAGIC)
-  if (g_classloader_namespace == nullptr && elf_reader.IsArm())
-    g_classloader_namespace = ns;
+  if (elf_reader.IsArm()) {
+    si->set_arm_lib();
+    si->set_elf_reader(const_cast<ElfReader*>(&elf_reader));
+    if (g_classloader_namespace == nullptr) {
+      g_classloader_namespace = ns;
+    }
+  }
 #endif
 
   for_each_dt_needed(task->get_elf_reader(), [&](const char* name) {

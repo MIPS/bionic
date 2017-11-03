@@ -697,6 +697,14 @@ void soinfo::set_arm_lib() {
   flags_ |= FLAG_ARMLIB;
 }
 
+ElfReader* soinfo::get_elf_reader() {
+  return elf_reader_;
+}
+
+void soinfo::set_elf_reader(ElfReader* elf_reader) {
+  elf_reader_ = elf_reader;
+}
+
 void soinfo::set_local_group_root(soinfo* local_group_root) {
   local_group_root_ = local_group_root;
 }
