@@ -99,7 +99,7 @@ struct soinfo {
   const ElfW(Phdr)* phdr;
   size_t phnum;
 #if defined(__work_around_b_24465209__) || defined(MAGIC)
-  ElfW(Addr) unused0; // DO NOT USE, maintained for compatibility.
+  ElfW(Addr) entry;
 #endif
   ElfW(Addr) base;
   size_t size;
