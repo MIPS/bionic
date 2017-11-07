@@ -34,6 +34,9 @@
 #include <string>
 
 #include "linker_namespaces.h"
+#if defined(MAGIC)
+class ElfReader;
+#endif
 
 #define FLAG_LINKED           0x00000001
 #define FLAG_EXE              0x00000004 // The main executable
@@ -107,7 +110,14 @@ struct soinfo {
 
   ElfW(Dyn)* dynamic;
 
-#if defined(__work_around_b_24465209__) || defined(MAGIC)
+#if defined(MAGIC)
+#if defined(__LP64__)
+  ElfReader* elf_reader_;
+#else
+  ElfReader* elf_reader_;
+  uint32_t unused3; // DO NOT USE, maintained for compatibility
+#endif
+#elif defined(__work_around_b_24465209__)
   uint32_t unused2; // DO NOT USE, maintained for compatibility
   uint32_t unused3; // DO NOT USE, maintained for compatibility
 #endif
@@ -247,6 +257,8 @@ struct soinfo {
 #if defined(MAGIC)
   bool is_arm_lib() const;
   void set_arm_lib();
+  ElfReader* get_elf_reader();
+  void set_elf_reader(ElfReader* elf_reader);
   void set_local_group_root(soinfo* local_group_root);
   bool arm_post_link();
 #endif
