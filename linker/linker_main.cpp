@@ -296,6 +296,9 @@ static ElfW(Addr) __linker_init_post_relocation(KernelArgumentBlock& args, ElfW(
   // Extract information passed from the kernel.
   si->phdr = reinterpret_cast<ElfW(Phdr)*>(args.getauxval(AT_PHDR));
   si->phnum = args.getauxval(AT_PHNUM);
+#if defined(MAGIC)
+  si->entry = args.getauxval(AT_ENTRY);
+#endif
 
   /* Compute the value of si->base. We can't rely on the fact that
    * the first entry is the PHDR because this will not be true
