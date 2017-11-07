@@ -650,12 +650,8 @@ class LoadTask {
     if (si_->is_arm_lib()) {
       ElfReader *elf_reader = si_->get_elf_reader();
 
-      if (!elf_reader->Load(extinfo_)) {
-        return false;
-      }
-
-      if (!load_arm_library(elf_reader->name(), si_)) {
-        soinfo_free(si_);
+      if (!elf_reader->Load(extinfo_) ||
+          !load_arm_library(elf_reader->name(), si_)) {
         return false;
       }
       return true;
