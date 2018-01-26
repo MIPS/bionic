@@ -51,7 +51,9 @@
 # define LWL ldl
 # define EXT dext
 # define SRL dsrl
+# define SLL dsll
 # define SUBU dsubu
+# define ADDU daddu
 #else
 # define NSIZE 4
 # define LW lw
@@ -59,7 +61,9 @@
 # define LWL lwl
 # define EXT ext
 # define SRL srl
+# define SLL sll
 # define SUBU subu
+# define ADDU addu
 #endif
 
 /* Technically strcmp should not read past the end of the strings being
@@ -146,30 +150,21 @@ L(alignloop): #do by bytes until a1 aligned
 L(exitalign):
 
 /* string a1 is NSIZE byte aligned at this point. */
-#ifndef __mips1
     lui t8, 0x0101
     ori t8, 0x0101
     lui t9, 0x7f7f
     ori t9, 0x7f7f
 #if __mips64
-    dsll t0, t8, 32
-    or  t8, t0
+    dsll t1, t8, 32
+    or  t8, t1
     dsll t1, t9, 32
     or  t9, t1
 #endif
-#endif
 
-/* hardware or software alignment not supported for mips1
-   rev6 archs have h/w unaligned support
-   remainings archs need to implemented with unaligned instructions */
-
-#if __mips1
-    andi t0, a0, (NSIZE - 1)
-    bne  t0, zero, L(byteloop)
-#elif __mips_isa_rev < 6
-    andi t0, a0, (NSIZE - 1)
-    bne  t0, zero, L(uwordloop)
-#endif
+    andi t2, a0, (NSIZE - 1) #check if a0 aligned
+    SUBU t3, t0, t2 #t3 will be used as shifter
+    bnez t2, L(uloopenter)
+    SUBU ta0, a0, t2 #bring back a0 to aligned position
 
 #define STRCMPW(OFFSET) \
     LW   v0, (OFFSET)(a0); \
@@ -178,7 +173,7 @@ L(exitalign):
     bne  v0, v1, L(worddiff); \
     nor  t1, v0, t9; \
     and  t0, t0, t1; \
-    bne  t0, zero, L(returnzero);\
+    bne  t0, zero, L(returnzero); \
 
 L(wordloop):
     SUBU t1, a2, (8 * NSIZE)
@@ -212,50 +207,57 @@ L(onewords):
     b   L(onewords)
     PTR_ADDIU a1, a1, NSIZE
 
-#if __mips_isa_rev < 6 && !__mips1
 #define USTRCMPW(OFFSET) \
-    LWR v0, (OFFSET)(a0); \
-    LWL v0, (OFFSET + NSIZE - 1)(a0); \
-    LW  v1, (OFFSET)(a1); \
-    SUBU    t0, v0, t8; \
-    bne v0, v1, L(worddiff); \
-    nor t1, v0, t9; \
-    and t0, t0, t1; \
-    bne t0, zero, L(returnzero);\
+    LW   v1, OFFSET(a1); \
+    SUBU t0, v0, t8; \
+    nor  t1, v0, t9; \
+    and  t0, t0, t1; \
+    bne  t0, zero, L(worddiff); \
+    SRL  v0, ta1; \
+    LW   a3, (OFFSET + NSIZE)(ta0); \
+    SUBU t0, v1, t8; \
+    SLL  t1, a3, t3; \
+    or   v0, v0, t1; \
+    bne  v0, v1, L(worddiff); \
+    nor  t1, v1, t9; \
+    and  t0, t0, t1; \
+    bne  t0, zero, L(returnzero); \
+    move v0, a3; \
+
+L(uloopenter):
+    LW   v0, 0(ta0)
+    SLL  ta1, t2, 3  #multiply by 8
+    SLL  t3, 3  #multiply by 8
+    li   a3, -1 #all 1s
+    SRL  a3, t3
+    or   v0, a3 #replace with all 1s if zeros in unintented read
 
 L(uwordloop):
     SUBU t1, a2, (8 * NSIZE)
     bltz t1, L(uonewords)
+    nop
     USTRCMPW(0 * NSIZE)
-    DELAY_READ
     USTRCMPW(1 * NSIZE)
-    DELAY_READ
     USTRCMPW(2 * NSIZE)
-    DELAY_READ
     USTRCMPW(3 * NSIZE)
-    DELAY_READ
     USTRCMPW(4 * NSIZE)
-    DELAY_READ
     USTRCMPW(5 * NSIZE)
-    DELAY_READ
     USTRCMPW(6 * NSIZE)
-    DELAY_READ
     USTRCMPW(7 * NSIZE)
     SUBU a2, a2, (8 * NSIZE)
-    PTR_ADDIU a0, a0, (8 * NSIZE)
+    PTR_ADDIU ta0, ta0, (8 * NSIZE)
     b   L(uwordloop)
     PTR_ADDIU a1, a1, (8 * NSIZE)
 
 L(uonewords):
     SUBU t1, a2, NSIZE
-    bltz t1, L(byteloop)
+    bltz t1, L(prebyteloop)
+    nop
     USTRCMPW(0)
     SUBU a2, a2, NSIZE
-    PTR_ADDIU a0, a0, NSIZE
+    PTR_ADDIU ta0, ta0, NSIZE
     b   L(uonewords)
     PTR_ADDIU a1, a1, NSIZE
-
-#endif
 
 L(returnzero):
     j   ra
@@ -363,6 +365,8 @@ L(wexit01):
     SUBU    v0, t0, t1
 #endif /* USE_CLZ */
 
+L(prebyteloop):
+    ADDU a0, ta0, t2
 L(byteloop):
     beq a2, zero, L(returnzero)
     SUBU a2, a2, 1
