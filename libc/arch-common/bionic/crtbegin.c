@@ -36,7 +36,12 @@ SECTION(".init_array") void (*__INIT_ARRAY__)(void) = (void (*)(void)) -1;
 SECTION(".fini_array") void (*__FINI_ARRAY__)(void) = (void (*)(void)) -1;
 #undef SECTION
 
-__used static void _start_main(void* raw_args) {
+#if defined(__mips__)
+__LIBC_HIDDEN__
+#else
+__used static
+#endif
+void _start_main(void* raw_args) {
   structors_array_t array;
   array.preinit_array = &__PREINIT_ARRAY__;
   array.init_array = &__INIT_ARRAY__;
@@ -56,6 +61,84 @@ __asm__(PRE "mov r0,sp; b _start_main" POST);
 __asm__(PRE "movl %esp,%eax; andl $~0xf,%esp; subl $12,%esp; pushl %eax; calll _start_main" POST);
 #elif defined(__x86_64__)
 __asm__(PRE "movq %rsp,%rdi; andq $~0xf,%rsp; callq _start_main" POST);
+#elif defined(__mips__) && !defined(__LP64__)
+__asm__ (
+"       .set push                   \n"
+"                                   \n"
+"       .text                       \n"
+"       .align  4                   \n"
+"       .type __start,@function     \n"
+"       .type _start,@function      \n"
+"       .globl __start              \n"
+"       .globl  _start              \n"
+"                                   \n"
+"       .ent    __start             \n"
+"__start:                           \n"
+"       .set noreorder              \n"
+"       nop                         \n"
+"       .set reorder                \n"
+"                                   \n"
+" _start:                           \n"
+"       .frame   $sp,32,$ra         \n"
+"       .mask   0x80000000,-4       \n"
+"                                   \n"
+"       .set noreorder              \n"
+"       bal     1f                  \n"
+"       nop                         \n"
+"1:                                 \n"
+"       .cpload $ra                 \n"
+"       .set reorder                \n"
+"                                   \n"
+"       move    $a0, $sp            \n"
+"       addiu   $sp, $sp, (-32)     \n"
+"       sw      $0, 28($sp)         \n"
+"       la      $t9, _start_main    \n"
+"       jalr    $t9                 \n"
+"                                   \n"
+"2:     b       2b                  \n"
+"       .end    __start             \n"
+"                                   \n"
+"       .set pop                    \n"
+);
+#elif defined(__mips__) && defined(__LP64__)
+__asm__ (
+"       .set push                   \n"
+"                                   \n"
+"       .text                       \n"
+"       .align  4                   \n"
+"       .type __start,@function     \n"
+"       .type _start,@function      \n"
+"       .globl __start              \n"
+"       .globl  _start              \n"
+"                                   \n"
+"       .ent    __start             \n"
+"__start:                           \n"
+"       .set noreorder              \n"
+"       nop                         \n"
+"       .set reorder                \n"
+"                                   \n"
+" _start:                           \n"
+"       .frame   $sp,32,$0          \n"
+"       .mask   0x80000000,-8       \n"
+"                                   \n"
+"       move    $a0, $sp            \n"
+"       daddiu  $sp, $sp, -32       \n"
+"                                   \n"
+"       .set noreorder              \n"
+"       bal     1f                  \n"
+"       nop                         \n"
+"1:                                 \n"
+"       .cpsetup $ra,16,1b          \n"
+"       .set reorder                \n"
+"                                   \n"
+"       sd      $0, 24($sp)         \n"
+"       jal     _start_main         \n"
+"                                   \n"
+"2:     b       2b                  \n"
+"       .end    __start             \n"
+"                                   \n"
+"       .set pop                    \n"
+);
 #else
 #error unsupported architecture
 #endif
