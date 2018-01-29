@@ -1886,25 +1886,6 @@ cc_object {
     local_include_dirs: ["include"],
     srcs: ["arch-common/bionic/crtbegin.c"],
 
-    arch: {
-        mips: {
-            srcs: [
-                "arch-mips/bionic/crtbegin.c",
-            ],
-            exclude_srcs: [
-                "arch-common/bionic/crtbegin.c",
-            ],
-        },
-        mips64: {
-            srcs: [
-                "arch-mips64/bionic/crtbegin.c",
-            ],
-            exclude_srcs: [
-                "arch-common/bionic/crtbegin.c",
-            ],
-        },
-    },
-
     defaults: ["crt_defaults"],
 }
 
@@ -1923,24 +1904,6 @@ cc_object {
     local_include_dirs: ["include"],
     srcs: ["arch-common/bionic/crtbegin.c"],
 
-    arch: {
-        mips: {
-            srcs: [
-                "arch-mips/bionic/crtbegin.c",
-            ],
-            exclude_srcs: [
-                "arch-common/bionic/crtbegin.c",
-            ],
-        },
-        mips64: {
-            srcs: [
-                "arch-mips64/bionic/crtbegin.c",
-            ],
-            exclude_srcs: [
-                "arch-common/bionic/crtbegin.c",
-            ],
-        },
-    },
     defaults: ["crt_defaults"],
 }
 
