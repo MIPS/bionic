@@ -52,6 +52,11 @@
 extern void __libc_init_globals(KernelArgumentBlock&);
 extern void __libc_init_AT_SECURE(KernelArgumentBlock&);
 
+#if defined(MAGIC)
+extern bool load_libakim(void);
+extern bool link_arm_exec(soinfo *si);
+#endif
+
 extern "C" void _start();
 
 static ElfW(Addr) get_elf_exec_load_bias(const ElfW(Ehdr)* elf);
@@ -291,6 +296,9 @@ static ElfW(Addr) __linker_init_post_relocation(KernelArgumentBlock& args) {
   // Extract information passed from the kernel.
   si->phdr = reinterpret_cast<ElfW(Phdr)*>(args.getauxval(AT_PHDR));
   si->phnum = args.getauxval(AT_PHNUM);
+#if defined(MAGIC)
+  si->entry = args.getauxval(AT_ENTRY);
+#endif
 
   /* Compute the value of si->base. We can't rely on the fact that
    * the first entry is the PHDR because this will not be true
@@ -334,6 +342,14 @@ static ElfW(Addr) __linker_init_post_relocation(KernelArgumentBlock& args) {
   // Use LD_LIBRARY_PATH and LD_PRELOAD (but only if we aren't setuid/setgid).
   parse_LD_LIBRARY_PATH(ldpath_env);
   parse_LD_PRELOAD(ldpreload_env);
+
+#if defined(MAGIC)
+  /* Find Elf file header, check if this is an ARM codefile */
+  if (elf_hdr->e_ident[EI_MAG0] == ELFMAG0 && elf_hdr->e_machine == EM_ARM) {
+      si->set_arm_lib();
+      load_libakim();
+    }
+#endif
 
   somain = si;
 
@@ -388,6 +404,19 @@ static ElfW(Addr) __linker_init_post_relocation(KernelArgumentBlock& args) {
                       &namespaces)) {
     async_safe_fatal("CANNOT LINK EXECUTABLE \"%s\": %s", g_argv[0], linker_get_error_buffer());
   } else if (needed_libraries_count == 0) {
+#if defined(MAGIC)
+    if (si->is_arm_lib()) {
+      if (!link_arm_exec(si)) {
+        async_safe_format_fd(2, "CANNOT LINK ARM EXECUTABLE: %s\n", linker_get_error_buffer());
+        exit(EXIT_FAILURE);
+      }
+      si->set_local_group_root(soinfo_list_t::make_list(si).front());
+      if (si->get_local_group_root() == nullptr) {
+        si->set_local_group_root(si);
+      }
+      /* All constructor calls were handled within link_arm_exec() */
+    } else
+#endif
     if (!si->link_image(g_empty_list, soinfo_list_t::make_list(si), nullptr)) {
       async_safe_fatal("CANNOT LINK EXECUTABLE \"%s\": %s", g_argv[0], linker_get_error_buffer());
     }
