@@ -156,12 +156,12 @@ bool ElfReader::Read(const char* name, int fd, off64_t file_offset, off64_t file
   file_size_ = file_size;
 
   if (ReadElfHeader() &&
+      VerifyElfHeader() &&
 #if defined(MAGIC)
       (phdr_table_ != nullptr || ReadProgramHeaders()) &&
 #else
-       ReadProgramHeaders() &&
-#endif
       ReadProgramHeaders() &&
+#endif
       ReadSectionHeaders() &&
       ReadDynamicSection()) {
     did_read_ = true;
