@@ -208,15 +208,18 @@ LEAF(__memset_chk,0)
 #else
 LEAF(__memset_chk)
 #endif
-	.set	noreorder
-        sltu    $t2, $a3, $a2
-        beq     $t2, $zero, memset
-        nop
-        .cpsetup $t9, $t8, __memset_chk
-        LA      $t9, __memset_chk_fail
-        jr      $t9
-        nop
-        .set	reorder
+	SETUP_GP64($t8, __memset_chk)
+	.set    noreorder
+	LA      $t9, memset
+	sltu    $t2, $a3, $a2
+	beq     $t2, $zero, 1f
+	nop
+	LA      $t9, __memset_chk_fail
+1:
+	RESTORE_GP64
+	jr      $t9
+	nop
+	.set    reorder
 END(__memset_chk)
 
 #ifdef __ANDROID__
