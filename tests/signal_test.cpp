@@ -337,15 +337,23 @@ TEST(signal, sigaction64_SIGRTMIN) {
   TestSigAction(sigaction64, sigaddset64, SIGRTMIN);
 }
 
+#define N_SIG (_NSIG - 1)
+#define N_SIG_BPW (sizeof(unsigned long) * 8)
+#define SIGSET_LOCAL_LEN (N_SIG / N_SIG_BPW)
+
+typedef struct {
+  unsigned long sig[SIGSET_LOCAL_LEN];
+} sigset_local_t;
+
 static void ClearSignalMask() {
-  uint64_t sigset = 0;
+  sigset_local_t sigset = {};
   if (syscall(__NR_rt_sigprocmask, SIG_SETMASK, &sigset, nullptr, sizeof(sigset)) != 0) {
     abort();
   }
 }
 
-static uint64_t GetSignalMask() {
-  uint64_t sigset;
+static sigset_local_t GetSignalMask() {
+  sigset_local_t sigset;
   if (syscall(__NR_rt_sigprocmask, SIG_SETMASK, nullptr, &sigset, sizeof(sigset)) != 0) {
     abort();
   }
@@ -363,9 +371,10 @@ constexpr SignalMaskFunctionType sigset_type = SignalMaskFunctionType::RtAware;
 constexpr SignalMaskFunctionType sigset_type = SignalMaskFunctionType::RtNonaware;
 #endif
 
-static void TestSignalMaskFiltered(uint64_t sigset, SignalMaskFunctionType type) {
-  for (int signo = 1; signo <= 64; ++signo) {
-    bool signal_blocked = sigset & (1ULL << (signo - 1));
+static void TestSignalMaskFiltered(sigset_local_t sigset, SignalMaskFunctionType type) {
+  for (int signo = 1; signo <= N_SIG; ++signo) {
+    bool signal_blocked = sigset.sig[(signo - 1) / N_SIG_BPW] &
+                          (1UL << ((signo - 1) % N_SIG_BPW));
     if (signo == SIGKILL || signo == SIGSTOP) {
       // SIGKILL and SIGSTOP shouldn't be blocked.
       EXPECT_EQ(false, signal_blocked) << "signal " << signo;
@@ -390,25 +399,43 @@ static void TestSignalMaskFunction(std::function<void()> fn, SignalMaskFunctionT
 
 TEST(signal, sigaction_filter) {
   ClearSignalMask();
-  static uint64_t sigset;
+  static sigset_local_t sigset;
   struct sigaction sa = {};
   sa.sa_handler = [](int) { sigset = GetSignalMask(); };
   sigfillset(&sa.sa_mask);
   sigaction(SIGUSR1, &sa, nullptr);
   raise(SIGUSR1);
-  ASSERT_NE(0ULL, sigset);
+
+  bool is_not_zero = false;
+  for (unsigned i = 0; i < SIGSET_LOCAL_LEN; ++i) {
+    if (sigset.sig[i] != 0) {
+      is_not_zero = true;
+      break;
+    }
+  }
+  ASSERT_NE(false, is_not_zero);
+
   TestSignalMaskFiltered(sigset, sigset_type);
 }
 
 TEST(signal, sigaction64_filter) {
   ClearSignalMask();
-  static uint64_t sigset;
+  static sigset_local_t sigset;
   struct sigaction64 sa = {};
   sa.sa_handler = [](int) { sigset = GetSignalMask(); };
   sigfillset64(&sa.sa_mask);
   sigaction64(SIGUSR1, &sa, nullptr);
   raise(SIGUSR1);
-  ASSERT_NE(0ULL, sigset);
+
+  bool is_not_zero = false;
+  for (unsigned i = 0; i < SIGSET_LOCAL_LEN; ++i) {
+    if (sigset.sig[i] != 0) {
+      is_not_zero = true;
+      break;
+    }
+  }
+  ASSERT_NE(false, is_not_zero);
+
   TestSignalMaskFiltered(sigset, SignalMaskFunctionType::RtAware);
 }
 
@@ -497,7 +524,7 @@ TEST(signal, sigset_filter) {
 #if defined(__BIONIC__)
   TestSignalMaskFunction(
       []() {
-        for (int i = 1; i <= 64; ++i) {
+        for (int i = 1; i <= N_SIG; ++i) {
           sigset(i, SIG_HOLD);
         }
       },
@@ -509,7 +536,7 @@ TEST(signal, sighold_filter) {
 #if defined(__BIONIC__)
   TestSignalMaskFunction(
       []() {
-        for (int i = 1; i <= 64; ++i) {
+        for (int i = 1; i <= N_SIG; ++i) {
           sighold(i);
         }
       },
