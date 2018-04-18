@@ -42,15 +42,13 @@ cc_library {
     name: "libc_malloc_debug",
 
     srcs: [
-        "BacktraceData.cpp",
         "Config.cpp",
         "DebugData.cpp",
         "debug_disable.cpp",
-        "FreeTrackData.cpp",
         "GuardData.cpp",
         "malloc_debug.cpp",
+        "PointerData.cpp",
         "RecordData.cpp",
-        "TrackData.cpp",
     ],
 
     stl: "libc++_static",
@@ -62,6 +60,11 @@ cc_library {
             static_libs: ["libunwind_llvm"],
         },
     },
+
+    // Clang lld link flags do not work with special link rules
+    // for libunwind_llvm yet. Linked aosp_arm-eng image failed to
+    // boot up in the emulator. http://b/78118944.
+    use_clang_lld: false,
 
     static_libs: [
         "libasync_safe",
@@ -91,6 +94,7 @@ cc_library {
         "-Werror",
         "-fno-stack-protector",
         "-Wno-error=format-zero-length",
+        "-Wthread-safety",
     ],
 }
 
@@ -98,16 +102,7 @@ cc_library {
 // Unit Tests
 // ==============================================================
 cc_test {
-
     name: "malloc_debug_unit_tests",
-    multilib: {
-        lib32: {
-            suffix: "32",
-        },
-        lib64: {
-            suffix: "64",
-        },
-    },
 
     srcs: [
         "tests/backtrace_fake.cpp",

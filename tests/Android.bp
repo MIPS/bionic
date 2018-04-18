@@ -545,6 +545,7 @@ cc_test {
         "libtest_init_fini_order_root2",
         "libtest_init_fini_order_root",
         "libtest_missing_symbol_child_public",
+        "libtest_missing_symbol_child_private",
         "libtest_missing_symbol_root",
         "libtest_missing_symbol",
         "libtest_nodelete_1",
@@ -595,6 +596,13 @@ cc_test {
         "libnstest_ns_a_public1_internal",
         "libnstest_ns_b_public2",
         "libnstest_ns_b_public3",
+        "ld_preload_test_helper",
+        "ld_preload_test_helper_lib1",
+        "ld_preload_test_helper_lib2",
+        "ld_config_test_helper",
+        "ld_config_test_helper_lib1",
+        "ld_config_test_helper_lib2",
+        "ld_config_test_helper_lib3",
     ],
 }
 
